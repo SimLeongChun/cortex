@@ -9,7 +9,8 @@ namespace Cortex.Mediator.DependencyInjection
             return options
                 // Register the open generic logging behavior for commands that return TResult
                 .AddOpenCommandPipelineBehavior(typeof(LoggingCommandBehavior<,>))
-                .AddOpenQueryPipelineBehavior(typeof(LoggingQueryBehavior<,>));
+                .AddOpenQueryPipelineBehavior(typeof(LoggingQueryBehavior<,>))
+                .AddOpenCommandPipelineBehavior(typeof(LoggingCommandBehavior<>)); // Add void command logging
         }
     }
 }

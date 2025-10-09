@@ -9,6 +9,7 @@ namespace Cortex.Mediator.DependencyInjection
     public class MediatorOptions
     {
         internal List<Type> CommandBehaviors { get; } = new();
+        internal List<Type> VoidCommandBehaviors { get; } = new();
         internal List<Type> QueryBehaviors { get; } = new();
 
         public bool OnlyPublicClasses { get; set; } = true;
@@ -23,21 +24,25 @@ namespace Cortex.Mediator.DependencyInjection
             var behaviorType = typeof(TBehavior);
 
             if (behaviorType.IsGenericTypeDefinition)
-            {
                 throw new ArgumentException("Open generic types must be registered using AddOpenCommandPipelineBehavior");
-            }
 
-            var implementsInterface = behaviorType
-                .GetInterfaces()
-                .Any(i => i.IsGenericType &&
-                          i.GetGenericTypeDefinition() == typeof(ICommandPipelineBehavior<,>));
+            var implementsReturning =
+                behaviorType.GetInterfaces().Any(i => i.IsGenericType &&
+                                                      i.GetGenericTypeDefinition() == typeof(ICommandPipelineBehavior<,>));
 
-            if (!implementsInterface)
-            {
-                throw new ArgumentException("Type must implement ICommandPipelineBehavior<,>");
-            }
+            var implementsNonReturning =
+                behaviorType.GetInterfaces().Any(i => i.IsGenericType &&
+                                                      i.GetGenericTypeDefinition() == typeof(ICommandPipelineBehavior<>));
 
-            CommandBehaviors.Add(behaviorType);
+            if (!implementsReturning && !implementsNonReturning)
+                throw new ArgumentException("Type must implement ICommandPipelineBehavior<,> or ICommandPipelineBehavior<>");
+
+            if (implementsReturning)
+                CommandBehaviors.Add(behaviorType);
+
+            if (implementsNonReturning)
+                VoidCommandBehaviors.Add(behaviorType);
+
             return this;
         }
 
@@ -47,29 +52,25 @@ namespace Cortex.Mediator.DependencyInjection
         public MediatorOptions AddOpenCommandPipelineBehavior(Type openGenericBehaviorType)
         {
             if (!openGenericBehaviorType.IsGenericTypeDefinition)
-            {
                 throw new ArgumentException("Type must be an open generic type definition");
-            }
 
-            var implementsInterface = openGenericBehaviorType
-                .GetInterfaces()
-                .Any(i => i.IsGenericType &&
-                          i.GetGenericTypeDefinition() == typeof(ICommandPipelineBehavior<,>));
+            var implementsReturning =
+                openGenericBehaviorType.GetInterfaces().Any(i => i.IsGenericType &&
+                                                                 i.GetGenericTypeDefinition() == typeof(ICommandPipelineBehavior<,>));
 
-            // For open generics, interface might not appear in GetInterfaces() yet; check by definition instead.
-            if (!implementsInterface &&
-                !(openGenericBehaviorType.IsGenericTypeDefinition &&
-                  openGenericBehaviorType.GetGenericTypeDefinition() == openGenericBehaviorType))
-            {
-                // Fall back to checking generic arguments count to give a clear error
-                var ok = openGenericBehaviorType.GetGenericArguments().Length == 2;
-                if (!ok)
-                {
-                    throw new ArgumentException("Type must implement ICommandPipelineBehavior<,>");
-                }
-            }
+            var implementsNonReturning =
+                openGenericBehaviorType.GetInterfaces().Any(i => i.IsGenericType &&
+                                                                 i.GetGenericTypeDefinition() == typeof(ICommandPipelineBehavior<>));
 
-            CommandBehaviors.Add(openGenericBehaviorType);
+            if (!implementsReturning && !implementsNonReturning)
+                throw new ArgumentException("Type must implement ICommandPipelineBehavior<,> or ICommandPipelineBehavior<>");
+
+            if (implementsReturning)
+                CommandBehaviors.Add(openGenericBehaviorType);
+
+            if (implementsNonReturning)
+                VoidCommandBehaviors.Add(openGenericBehaviorType);
+
             return this;
         }
 

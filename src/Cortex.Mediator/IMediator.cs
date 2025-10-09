@@ -16,6 +16,11 @@ namespace Cortex.Mediator
             CancellationToken cancellationToken = default)
             where TCommand : ICommand<TResult>;
 
+        Task SendCommandAsync<TCommand>(
+            TCommand command,
+            CancellationToken cancellationToken = default)
+            where TCommand : ICommand;
+
         Task<TResult> SendQueryAsync<TQuery, TResult>(
             TQuery query,
             CancellationToken cancellationToken = default)
