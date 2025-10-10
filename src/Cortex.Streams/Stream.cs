@@ -5,6 +5,8 @@ using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Cortex.Streams
 {
@@ -87,9 +89,9 @@ namespace Cortex.Streams
         /// Gets the current status of the stream.
         /// </summary>
         /// <returns>A string indicating whether the stream is running or stopped.</returns>
-        public string GetStatus()
+        public StreamStatuses GetStatus()
         {
-            return _isStarted ? "Running" : "Stopped";
+            return _isStarted ? StreamStatuses.RUNNING : StreamStatuses.NOT_RUNNING;
         }
 
         /// <summary>
@@ -111,6 +113,34 @@ namespace Cortex.Streams
             {
                 throw new InvalidOperationException("Stream has not been started.");
             }
+        }
+
+        // feature #102: Support async emit with cancellation token
+
+        /// <summary>
+        /// Asynchronously Emits data into the stream when no source operator is used.
+        /// </summary>
+        /// <param name="value">The value to emit. The meaning and requirements of this value depend on the implementation.</param>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the emit operation.</param>
+        /// <returns>A task that represents the asynchronous emit operation.</returns>
+        public Task EmitAsync(TIn value, CancellationToken cancellationToken = default)
+        {
+            if (!_isStarted)
+                throw new InvalidOperationException("Stream has not been started.");
+
+            if (_operatorChain is SourceOperatorAdapter<TIn>)
+                throw new InvalidOperationException("Cannot manually emit data to a stream with a source operator.");
+
+            // We can only cancel before we queue the work, since operators are synchronous today.
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Dispatch pipeline work off the caller thread.
+            return Task.Run(() =>
+            {
+                // If you ever add cooperative cancellation to operators,
+                // plumb 'cancellationToken' through and honor it there.
+                _operatorChain.Process(value);
+            }, cancellationToken);
         }
 
         public IReadOnlyDictionary<string, BranchOperator<TCurrent>> GetBranches()
