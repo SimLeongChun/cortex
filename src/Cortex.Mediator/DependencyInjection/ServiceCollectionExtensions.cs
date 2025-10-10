@@ -49,6 +49,14 @@ namespace Cortex.Mediator.DependencyInjection
                 .AsImplementedInterfaces()
                 .WithScopedLifetime());
 
+            // feature #141 - Register void command handlers
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(ICommandHandler<>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithScopedLifetime());
+
             services.Scan(scan => scan
                 .FromAssemblies(assemblies)
                 .AddClasses(classes => classes
@@ -70,6 +78,12 @@ namespace Cortex.Mediator.DependencyInjection
             foreach (var behaviorType in options.CommandBehaviors)
             {
                 services.AddTransient(typeof(ICommandPipelineBehavior<,>), behaviorType);
+            }
+
+            // feature #141 - Register non-returning command pipeline behaviors
+            foreach (var behaviorType in options.VoidCommandBehaviors)
+            {
+                services.AddTransient(typeof(ICommandPipelineBehavior<>), behaviorType);
             }
 
             // Query behaviors (if needed)

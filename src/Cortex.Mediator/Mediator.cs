@@ -22,7 +22,7 @@ namespace Cortex.Mediator
         }
 
         public async Task<TResult> SendCommandAsync<TCommand, TResult>(TCommand command, CancellationToken cancellationToken = default)
-     where TCommand : ICommand<TResult>
+            where TCommand : ICommand<TResult>
         {
             var handler = _serviceProvider.GetRequiredService<ICommandHandler<TCommand, TResult>>();
 
@@ -31,7 +31,19 @@ namespace Cortex.Mediator
                 handler = new PipelineBehaviorNextDelegate<TCommand, TResult>(behavior, handler);
             }
 
-           return await handler.Handle(command, cancellationToken);
+            return await handler.Handle(command, cancellationToken);
+        }
+
+        public async Task SendCommandAsync<TCommand>(TCommand command, CancellationToken cancellationToken = default) where TCommand : ICommand
+        {
+            var handler = _serviceProvider.GetRequiredService<ICommandHandler<TCommand>>();
+
+            foreach (var behavior in _serviceProvider.GetServices<ICommandPipelineBehavior<TCommand>>().Reverse())
+            {
+                handler = new PipelineBehaviorNextDelegate<TCommand>(behavior, handler);
+            }
+
+            await handler.Handle(command, cancellationToken);
         }
 
         public async Task<TResult> SendQueryAsync<TQuery, TResult>(TQuery query, CancellationToken cancellationToken = default)
@@ -57,6 +69,7 @@ namespace Cortex.Mediator
             await Task.WhenAll(tasks);
         }
 
+    
         private class PipelineBehaviorNextDelegate<TCommand, TResult> : ICommandHandler<TCommand, TResult>
         where TCommand : ICommand<TResult>
         {
@@ -72,6 +85,29 @@ namespace Cortex.Mediator
             }
 
             public Task<TResult> Handle(TCommand command, CancellationToken cancellationToken)
+            {
+                return _behavior.Handle(
+                    command,
+                    () => _next.Handle(command, cancellationToken),
+                    cancellationToken);
+            }
+        }
+
+        private class PipelineBehaviorNextDelegate<TCommand> : ICommandHandler<TCommand>
+            where TCommand : ICommand
+        {
+            private readonly ICommandPipelineBehavior<TCommand> _behavior;
+            private readonly ICommandHandler<TCommand> _next;
+
+            public PipelineBehaviorNextDelegate(
+                ICommandPipelineBehavior<TCommand> behavior,
+                ICommandHandler<TCommand> next)
+            {
+                _behavior = behavior;
+                _next = next;
+            }
+
+            public Task Handle(TCommand command, CancellationToken cancellationToken)
             {
                 return _behavior.Handle(
                     command,
