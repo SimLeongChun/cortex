@@ -1,4 +1,6 @@
-﻿namespace Cortex.Serialization.Yaml.Parser
+﻿using System.Collections.Generic;
+
+namespace Cortex.Serialization.Yaml.Parser
 {
     internal sealed record Token(TokenType Type, string? Value, int Line, int Column);
     internal abstract record YamlNode;

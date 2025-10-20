@@ -1,4 +1,6 @@
-﻿namespace Cortex.Serialization.Yaml.Converters
+﻿using System;
+
+namespace Cortex.Serialization.Yaml.Converters
 {
     public interface IYamlTypeConverter
     {

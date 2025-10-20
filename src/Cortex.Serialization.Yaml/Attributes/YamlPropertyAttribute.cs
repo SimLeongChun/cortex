@@ -1,4 +1,6 @@
-﻿namespace Cortex.Serialization.Yaml.Attributes
+﻿using System;
+
+namespace Cortex.Serialization.Yaml.Attributes
 {
     /// <summary>
     /// Specifies a custom YAML property name for a field or property during serialization and deserialization.

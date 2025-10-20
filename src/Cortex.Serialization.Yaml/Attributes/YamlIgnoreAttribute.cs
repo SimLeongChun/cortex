@@ -1,4 +1,6 @@
-﻿namespace Cortex.Serialization.Yaml.Attributes
+﻿using System;
+
+namespace Cortex.Serialization.Yaml.Attributes
 {
     /// <summary>
     /// Indicates that a field or property should be ignored during YAML serialization and deserialization.

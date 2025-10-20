@@ -1,4 +1,7 @@
-﻿namespace Cortex.Serialization.Yaml.Reflection
+﻿using System;
+using System.Linq;
+
+namespace Cortex.Serialization.Yaml.Reflection
 {
     internal sealed class CachedTypeInfo
     {

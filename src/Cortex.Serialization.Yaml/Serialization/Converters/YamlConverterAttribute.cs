@@ -1,4 +1,6 @@
-﻿namespace Cortex.Serialization.Yaml.Converters
+﻿using System;
+
+namespace Cortex.Serialization.Yaml.Converters
 {
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct | AttributeTargets.Enum)]
     public sealed class YamlConverterAttribute : Attribute

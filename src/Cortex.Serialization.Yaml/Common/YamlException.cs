@@ -1,4 +1,6 @@
-﻿namespace Cortex.Serialization.Yaml.Common
+﻿using System;
+
+namespace Cortex.Serialization.Yaml.Common
 {
     /// <summary>
     /// The exception that is thrown when an error occurs during YAML serialization or deserialization.

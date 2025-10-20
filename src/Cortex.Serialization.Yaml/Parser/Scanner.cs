@@ -1,4 +1,6 @@
-﻿namespace Cortex.Serialization.Yaml.Parser
+﻿using System.Collections.Generic;
+
+namespace Cortex.Serialization.Yaml.Parser
 {
     internal sealed class Scanner
     {
