@@ -1,11 +1,11 @@
 ﻿using Cortex.States;
 using Cortex.States.Operators;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Windows;
 using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 
 namespace Cortex.Streams.Operators
@@ -16,7 +16,11 @@ namespace Cortex.Streams.Operators
     /// <typeparam name="TInput">The type of input data.</typeparam>
     /// <typeparam name="TKey">The type of the key to group by.</typeparam>
     /// <typeparam name="TWindowOutput">The type of the output after windowing.</typeparam>
-    public class SlidingWindowOperator<TInput, TKey, TWindowOutput> : IOperator, IStatefulOperator, ITelemetryEnabled
+    public class SlidingWindowOperator<TInput, TKey, TWindowOutput> :
+        IOperator,
+        IStatefulOperator,
+        ITelemetryEnabled,
+        IErrorHandlingEnabled
     {
         private readonly Func<TInput, TKey> _keySelector;
         private readonly TimeSpan _windowDuration;
@@ -34,9 +38,12 @@ namespace Cortex.Streams.Operators
         private Action _incrementProcessedCounter;
         private Action<double> _recordProcessingTime;
 
-        // Timer for window processing
+        // Timer + lock for window processing
         private readonly Timer _windowProcessingTimer;
         private readonly object _stateLock = new object();
+
+        // Global error handling
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         public SlidingWindowOperator(
             Func<TInput, TKey> keySelector,
@@ -53,9 +60,11 @@ namespace Cortex.Streams.Operators
             _windowStateStore = windowStateStore ?? throw new ArgumentNullException(nameof(windowStateStore));
             _windowResultsStateStore = windowResultsStateStore;
 
-            // Set up a timer to periodically process windows
+            // Periodically process windows based on slide interval
             _windowProcessingTimer = new Timer(WindowProcessingCallback, null, _slideInterval, _slideInterval);
         }
+
+        #region Telemetry
 
         public void SetTelemetryProvider(ITelemetryProvider telemetryProvider)
         {
@@ -64,9 +73,18 @@ namespace Cortex.Streams.Operators
             if (_telemetryProvider != null)
             {
                 var metricsProvider = _telemetryProvider.GetMetricsProvider();
-                _processedCounter = metricsProvider.CreateCounter($"sliding_window_operator_processed_{typeof(TInput).Name}", "Number of items processed by SlidingWindowOperator");
-                _processingTimeHistogram = metricsProvider.CreateHistogram($"sliding_window_operator_processing_time_{typeof(TInput).Name}", "Processing time for SlidingWindowOperator");
-                _tracer = _telemetryProvider.GetTracingProvider().GetTracer($"SlidingWindowOperator_{typeof(TInput).Name}");
+
+                _processedCounter = metricsProvider.CreateCounter(
+                    $"SlidingWindowOperator_Processed_{typeof(TInput).Name}",
+                    "Number of items processed by SlidingWindowOperator");
+
+                _processingTimeHistogram = metricsProvider.CreateHistogram(
+                    $"SlidingWindowOperator_ProcessingTime_{typeof(TInput).Name}",
+                    "Processing time for SlidingWindowOperator");
+
+                _tracer = _telemetryProvider
+                    .GetTracingProvider()
+                    .GetTracer($"SlidingWindowOperator_{typeof(TInput).Name}");
 
                 // Cache delegates
                 _incrementProcessedCounter = () => _processedCounter.Increment();
@@ -85,13 +103,44 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        #endregion
+
+        #region Error handling
+
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
+        }
+
+        #endregion
+
+        #region IOperator
+
         public void Process(object input)
         {
             if (input == null)
                 throw new ArgumentNullException(nameof(input));
 
-            if (!(input is TInput typedInput))
-                throw new ArgumentException($"Expected input of type {typeof(TInput).Name}, but received {input.GetType().Name}");
+            TInput typedInput;
+            try
+            {
+                typedInput = (TInput)input;
+            }
+            catch (InvalidCastException)
+            {
+                throw new ArgumentException(
+                    $"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+            }
+
+            var operatorName =
+                $"SlidingWindowOperator<{typeof(TInput).Name},{typeof(TKey).Name},{typeof(TWindowOutput).Name}>";
+
+            bool executedSuccessfully;
 
             if (_telemetryProvider != null)
             {
@@ -101,8 +150,17 @@ namespace Cortex.Streams.Operators
                 {
                     try
                     {
-                        ProcessInput(typedInput);
-                        span.SetAttribute("status", "success");
+                        executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput>(
+                            _executionOptions,
+                            operatorName,
+                            input,
+                            () =>
+                            {
+                                ProcessInput(typedInput);
+                                return typedInput; // dummy return
+                            });
+
+                        span.SetAttribute("status", executedSuccessfully ? "success" : "skipped");
                     }
                     catch (Exception ex)
                     {
@@ -113,16 +171,30 @@ namespace Cortex.Streams.Operators
                     finally
                     {
                         stopwatch.Stop();
-                        _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                        _incrementProcessedCounter();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
             }
             else
             {
-                ProcessInput(typedInput);
+                executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput>(
+                    _executionOptions,
+                    operatorName,
+                    input,
+                    () =>
+                    {
+                        ProcessInput(typedInput);
+                        return typedInput;
+                    });
             }
+
+            // If executedSuccessfully == false, the global error handler decided to Skip this element.
         }
+
+        #endregion
+
+        #region Window logic
 
         private void ProcessInput(TInput input)
         {
@@ -159,49 +231,55 @@ namespace Cortex.Streams.Operators
 
         private void WindowProcessingCallback(object state)
         {
-            try
-            {
-                var currentTime = DateTime.UtcNow;
-                var expiredWindowKeys = new List<WindowKey<TKey>>();
+            var operatorName =
+                $"SlidingWindowOperator<{typeof(TInput).Name},{typeof(TKey).Name},{typeof(TWindowOutput).Name}>.Timer";
 
-                lock (_stateLock)
+            // Timer work is also routed through global error handling
+            ErrorHandlingHelper.TryExecute<object>(
+                _executionOptions,
+                operatorName,
+                state,
+                () =>
                 {
-                    var allWindowKeys = _windowStateStore.GetKeys();
-
-                    foreach (var windowKey in allWindowKeys)
-                    {
-                        if (currentTime >= windowKey.WindowStartTime + _windowDuration)
-                        {
-                            // Window has expired
-                            expiredWindowKeys.Add(windowKey);
-                        }
-                    }
-                }
-
-                // Process expired windows outside the lock
-                foreach (var windowKey in expiredWindowKeys)
-                {
-                    List<TInput> windowEvents;
+                    var currentTime = DateTime.UtcNow;
+                    var expiredWindowKeys = new List<WindowKey<TKey>>();
 
                     lock (_stateLock)
                     {
-                        windowEvents = _windowStateStore.Get(windowKey);
-                        if (windowEvents == null)
-                            continue; // Already processed
+                        var allWindowKeys = _windowStateStore.GetKeys();
+
+                        foreach (var windowKey in allWindowKeys)
+                        {
+                            if (currentTime >= windowKey.WindowStartTime + _windowDuration)
+                            {
+                                // Window has expired
+                                expiredWindowKeys.Add(windowKey);
+                            }
+                        }
                     }
 
-                    ProcessWindow(windowKey, windowEvents);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log or handle exceptions as necessary
-                Console.WriteLine($"Error in WindowProcessingCallback: {ex.Message}");
-            }
+                    // Process expired windows outside the lock
+                    foreach (var windowKey in expiredWindowKeys)
+                    {
+                        List<TInput> windowEvents;
+
+                        lock (_stateLock)
+                        {
+                            windowEvents = _windowStateStore.Get(windowKey);
+                            if (windowEvents == null)
+                                continue; // Already processed
+                        }
+
+                        ProcessWindow(windowKey, windowEvents);
+                    }
+
+                    return null;
+                });
         }
 
         private void ProcessWindow(WindowKey<TKey> windowKey, List<TInput> windowEvents)
         {
+            // User code: can throw; if called from timer, it's already under ErrorHandlingHelper
             var windowOutput = _windowFunction(windowEvents);
 
             // Optionally store the window result
@@ -210,7 +288,7 @@ namespace Cortex.Streams.Operators
                 _windowResultsStateStore.Put(windowKey, windowOutput);
             }
 
-            // Emit the window output
+            // Emit the window output downstream
             _nextOperator?.Process(windowOutput);
 
             // Remove the window state
@@ -228,8 +306,11 @@ namespace Cortex.Streams.Operators
 
             for (int i = 0; i < windowCount; i++)
             {
-                var windowStartTime = firstWindowStartTime + TimeSpan.FromMilliseconds(i * _slideInterval.TotalMilliseconds);
-                if (windowStartTime <= eventTime && eventTime < windowStartTime + _windowDuration)
+                var windowStartTime = firstWindowStartTime +
+                                      TimeSpan.FromMilliseconds(i * _slideInterval.TotalMilliseconds);
+
+                if (windowStartTime <= eventTime &&
+                    eventTime < windowStartTime + _windowDuration)
                 {
                     windowStartTimes.Add(windowStartTime);
                 }
@@ -238,22 +319,39 @@ namespace Cortex.Streams.Operators
             return windowStartTimes;
         }
 
+        #endregion
+
+        #region IStatefulOperator
+
         public IEnumerable<IDataStore> GetStateStores()
         {
             yield return _windowStateStore;
+
             if (_windowResultsStateStore != null)
                 yield return _windowResultsStateStore;
         }
+
+        #endregion
+
+        #region Next operator wiring
 
         public void SetNext(IOperator nextOperator)
         {
             _nextOperator = nextOperator;
 
-            // Propagate telemetry to the next operator
+            // Telemetry → downstream
             if (_nextOperator is ITelemetryEnabled nextTelemetryEnabled && _telemetryProvider != null)
             {
                 nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
             }
+
+            // Error handling → downstream
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
         }
+
+        #endregion
     }
 }

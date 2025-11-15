@@ -1,4 +1,5 @@
 ﻿using Cortex.Streams.Abstractions;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 using Cortex.Telemetry;
 using System.Collections.Generic;
@@ -16,13 +17,22 @@ namespace Cortex.Streams
         private readonly IOperator _firstOperator;
         private readonly List<BranchOperator<TCurrent>> _branchOperators;
         private readonly ITelemetryProvider _telemetryProvider;
+        private readonly StreamExecutionOptions _executionOptions;
 
-        public SinkBuilder(string name, IOperator firstOperator, List<BranchOperator<TCurrent>> branchOperators, ITelemetryProvider telemetryProvider)
+
+        public SinkBuilder(
+            string name,
+            IOperator firstOperator,
+            List<BranchOperator<TCurrent>> branchOperators,
+            ITelemetryProvider telemetryProvider,
+            StreamExecutionOptions executionOptions)
+
         {
             _name = name;
             _firstOperator = firstOperator;
             _branchOperators = branchOperators;
             _telemetryProvider = telemetryProvider;
+            _executionOptions = executionOptions;
         }
 
         /// <summary>
@@ -31,7 +41,7 @@ namespace Cortex.Streams
         /// <returns>A stream instance.</returns>
         public IStream<TIn, TCurrent> Build()
         {
-            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions);
         }
     }
 }

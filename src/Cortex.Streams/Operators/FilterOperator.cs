@@ -1,4 +1,5 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,7 +10,7 @@ namespace Cortex.Streams.Operators
     /// An operator that filters data based on a predicate.
     /// </summary>
     /// <typeparam name="T">The type of data being filtered.</typeparam>
-    public class FilterOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled
+    public class FilterOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Func<T, bool> _predicate;
         private IOperator _nextOperator;
@@ -24,6 +25,9 @@ namespace Cortex.Streams.Operators
         private Action _incrementProcessedCounter;
         private Action _incrementFilteredOutCounter;
         private Action<double> _recordProcessingTime;
+
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
+
 
         public FilterOperator(Func<T, bool> predicate)
         {
@@ -61,9 +65,26 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            // Propagate to the next operator if it supports error handling
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
+        }
+
         public void Process(object input)
         {
-            bool isPassed;
+            if (!(input is T typedInput))
+                throw new ArgumentException($"Expected input of type {typeof(T).Name}, but received {input?.GetType().Name ?? "null"}");
+
+            var operatorName = $"FilterOperator<{typeof(T).Name}>";
+
+            bool isPassed = false;
+            bool executedSuccessfully;
 
             if (_telemetryProvider != null)
             {
@@ -72,9 +93,16 @@ namespace Cortex.Streams.Operators
                 {
                     try
                     {
-                        isPassed = _predicate((T)input);
-                        span.SetAttribute("filter_result", isPassed.ToString());
-                        span.SetAttribute("status", "success");
+                        executedSuccessfully = ErrorHandlingHelper.TryExecute<T, bool>(
+                            _executionOptions,
+                            operatorName,
+                            input,
+                            _predicate,
+                            typedInput,
+                            out isPassed);
+
+                        span.SetAttribute("filter_result", executedSuccessfully ? isPassed.ToString() : "skipped");
+                        span.SetAttribute("status", executedSuccessfully ? "success" : "skipped");
                     }
                     catch (Exception ex)
                     {
@@ -85,14 +113,27 @@ namespace Cortex.Streams.Operators
                     finally
                     {
                         stopwatch.Stop();
-                        _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                        _incrementProcessedCounter();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
             }
             else
             {
-                isPassed = _predicate((T)input);
+                executedSuccessfully = ErrorHandlingHelper.TryExecute<T, bool>(
+                    _executionOptions,
+                    operatorName,
+                    input,
+                    _predicate,
+                    typedInput,
+                    out isPassed);
+            }
+
+            if (!executedSuccessfully)
+            {
+                // treated as filtered-out on error skip
+                _incrementFilteredOutCounter?.Invoke();
+                return;
             }
 
             if (isPassed)
@@ -113,6 +154,11 @@ namespace Cortex.Streams.Operators
             if (_nextOperator is ITelemetryEnabled nextTelemetryEnabled && _telemetryProvider != null)
             {
                 nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
             }
         }
 

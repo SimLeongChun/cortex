@@ -1,4 +1,5 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,7 +10,7 @@ namespace Cortex.Streams.Operators
     /// An operator that consumes data at the end of the stream.
     /// </summary>
     /// <typeparam name="TInput">The type of data consumed by the sink.</typeparam>
-    public class SinkOperator<TInput> : IOperator, IHasNextOperators, ITelemetryEnabled
+    public class SinkOperator<TInput> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Action<TInput> _sinkFunction;
 
@@ -18,8 +19,11 @@ namespace Cortex.Streams.Operators
         private ICounter _processedCounter;
         private IHistogram _processingTimeHistogram;
         private ITracer _tracer;
+
         private Action _incrementProcessedCounter;
         private Action<double> _recordProcessingTime;
+
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         public SinkOperator(Action<TInput> sinkFunction)
         {
@@ -48,18 +52,31 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+        }
+
         public void Process(object input)
         {
+            TInput typedInput = (TInput)input;
+
+            var operatorName = $"SinkOperator<{typeof(TInput).Name}>";
+
             if (_telemetryProvider != null)
             {
                 var stopwatch = Stopwatch.StartNew();
-
                 using (var span = _tracer.StartSpan("SinkOperator.Process"))
                 {
                     try
                     {
-                        _sinkFunction((TInput)input);
-                        span.SetAttribute("status", "success");
+                        var executed = ErrorHandlingHelper.TryExecute<TInput>(
+                            _executionOptions,
+                            operatorName,
+                            input,
+                            _sinkFunction);
+
+                        span.SetAttribute("status", executed ? "success" : "skipped");
                     }
                     catch (Exception ex)
                     {
@@ -70,14 +87,18 @@ namespace Cortex.Streams.Operators
                     finally
                     {
                         stopwatch.Stop();
-                        _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                        _incrementProcessedCounter();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
             }
             else
             {
-                _sinkFunction((TInput)input);
+                ErrorHandlingHelper.TryExecute<TInput>(
+                    _executionOptions,
+                    operatorName,
+                    input,
+                    _sinkFunction);
             }
         }
 
