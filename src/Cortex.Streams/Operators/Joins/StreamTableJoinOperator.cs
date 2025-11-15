@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.States.Operators;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
@@ -15,7 +16,7 @@ namespace Cortex.Streams.Operators
     /// <typeparam name="TRight">Type of the right table elements stored in the <see cref="IDataStore{TKey, TRight}"/>.</typeparam>
     /// <typeparam name="TKey">Type of the key used for joining left elements with right elements.</typeparam>
     /// <typeparam name="TResult">Type of the result produced by the join operation.</typeparam>
-    public class StreamTableJoinOperator<TLeft, TRight, TKey, TResult> : IOperator, IStatefulOperator, ITelemetryEnabled
+    public class StreamTableJoinOperator<TLeft, TRight, TKey, TResult> : IOperator, IStatefulOperator, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Func<TLeft, TKey> _keySelector;
         private readonly Func<TLeft, TRight, TResult> _joinFunction;
@@ -29,6 +30,9 @@ namespace Cortex.Streams.Operators
         private ITracer _tracer;
         private Action _incrementProcessedCounter;
         private Action<double> _recordProcessingTime;
+
+        // Global error handling
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
 
         /// <summary>
@@ -79,6 +83,16 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
+        }
+
         /// <summary>
         /// Processes an incoming item from the left stream.
         /// If the item key exists in the right-hand state store, the join function is invoked,
@@ -87,38 +101,72 @@ namespace Cortex.Streams.Operators
         /// <param name="input">An input item of type <typeparamref name="TLeft"/> to be joined.</param>
         public void Process(object input)
         {
-            if (input is TLeft left)
+            // Only react to TLeft; ignore anything else (e.g., other branches reusing operator)
+            TLeft left;
+            try
             {
-                if (_telemetryProvider != null)
+                left = (TLeft)input;
+            }
+            catch (InvalidCastException)
+            {
+                return;
+            }
+
+            var operatorName =
+                $"StreamTableJoinOperator<{typeof(TLeft).Name},{typeof(TRight).Name},{typeof(TKey).Name},{typeof(TResult).Name}>";
+
+            bool executedSuccessfully;
+
+            if (_telemetryProvider != null)
+            {
+                var stopwatch = Stopwatch.StartNew();
+
+                using (var span = _tracer.StartSpan("StreamTableJoinOperator.Process"))
                 {
-                    var stopwatch = Stopwatch.StartNew();
-                    using (var span = _tracer.StartSpan("StreamTableJoinOperator.Process"))
+                    try
                     {
-                        try
-                        {
-                            ProcessLeft(left);
-                            span.SetAttribute("status", "success");
-                        }
-                        catch (Exception ex)
-                        {
-                            span.SetAttribute("status", "error");
-                            span.SetAttribute("exception", ex.ToString());
-                            throw;
-                        }
-                        finally
-                        {
-                            stopwatch.Stop();
-                            _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                            _incrementProcessedCounter();
-                        }
+                        executedSuccessfully = ErrorHandlingHelper.TryExecute<TLeft>(
+                            _executionOptions,
+                            operatorName,
+                            input,
+                            () =>
+                            {
+                                ProcessLeft(left);
+                                return left; // dummy return for generic helper
+                            });
+
+                        span.SetAttribute("status", executedSuccessfully ? "success" : "skipped");
+                    }
+                    catch (Exception ex)
+                    {
+                        span.SetAttribute("status", "error");
+                        span.SetAttribute("exception", ex.ToString());
+                        throw;
+                    }
+                    finally
+                    {
+                        stopwatch.Stop();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
-                else
-                {
-                    ProcessLeft(left);
-                }
             }
+            else
+            {
+                executedSuccessfully = ErrorHandlingHelper.TryExecute<TLeft>(
+                    _executionOptions,
+                    operatorName,
+                    input,
+                    () =>
+                    {
+                        ProcessLeft(left);
+                        return left;
+                    });
+            }
+
+            // If executedSuccessfully == false → global handler decided to Skip this left element
         }
+
 
         /// <summary>
         /// Performs the actual lookup on the right-side <see cref="IDataStore{TKey, TRight}"/>
@@ -140,11 +188,11 @@ namespace Cortex.Streams.Operators
                 }
             }
 
-            if (hasValue)
-            {
-                var result = _joinFunction(left, right);
-                _nextOperator?.Process(result);
-            }
+            if (!hasValue)
+                return;
+
+            var result = _joinFunction(left, right);
+            _nextOperator?.Process(result);
         }
 
         /// <summary>
@@ -159,6 +207,12 @@ namespace Cortex.Streams.Operators
             if (_nextOperator is ITelemetryEnabled nextTelemetryEnabled && _telemetryProvider != null)
             {
                 nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
+
+            // Error handling → downstream
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
             }
         }
 

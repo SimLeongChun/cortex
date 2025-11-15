@@ -1,4 +1,5 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,7 +15,7 @@ namespace Cortex.Streams.Operators
     /// </summary>
     /// <typeparam name="TInput">The type of the input element.</typeparam>
     /// <typeparam name="TOutput">The type of the output element(s) produced.</typeparam>
-    public class FlatMapOperator<TInput, TOutput> : IOperator, IHasNextOperators, ITelemetryEnabled
+    public class FlatMapOperator<TInput, TOutput> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Func<TInput, IEnumerable<TOutput>> _flatMapFunction;
         private IOperator _nextOperator;
@@ -25,9 +26,13 @@ namespace Cortex.Streams.Operators
         private ICounter _emittedCounter;
         private IHistogram _processingTimeHistogram;
         private ITracer _tracer;
+
         private Action _incrementProcessedCounter;
         private Action _incrementEmittedCounter;
         private Action<double> _recordProcessingTime;
+
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
+
 
         public FlatMapOperator(Func<TInput, IEnumerable<TOutput>> flatMapFunction)
         {
@@ -65,6 +70,17 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            // Propagate to the next operator if it supports error handling
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
+        }
+
         public void Process(object input)
         {
             if (input == null)
@@ -73,7 +89,10 @@ namespace Cortex.Streams.Operators
             if (!(input is TInput typedInput))
                 throw new ArgumentException($"Expected input of type {typeof(TInput).Name}, but received {input.GetType().Name}", nameof(input));
 
+
+            var operatorName = $"FlatMapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
             IEnumerable<TOutput> outputs;
+            bool executedSuccessfully;
 
             if (_telemetryProvider != null)
             {
@@ -106,11 +125,22 @@ namespace Cortex.Streams.Operators
                 outputs = _flatMapFunction(typedInput) ?? Array.Empty<TOutput>();
             }
 
+            executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, IEnumerable<TOutput>>(
+                _executionOptions,
+                operatorName,
+                input,
+                _flatMapFunction,
+                typedInput,
+                out outputs);
+
+            if (!executedSuccessfully)
+                return;
+
             // Emit each output element
             foreach (var output in outputs)
             {
-                _incrementEmittedCounter?.Invoke();
                 _nextOperator?.Process(output);
+                _incrementEmittedCounter?.Invoke();
             }
         }
 
@@ -122,6 +152,11 @@ namespace Cortex.Streams.Operators
             if (_nextOperator is ITelemetryEnabled nextTelemetryEnabled && _telemetryProvider != null)
             {
                 nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
             }
         }
 

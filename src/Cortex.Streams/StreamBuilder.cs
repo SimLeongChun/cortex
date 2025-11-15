@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Abstractions;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 using Cortex.Streams.Windows;
 using Cortex.Telemetry;
@@ -23,6 +24,8 @@ namespace Cortex.Streams
         private ForkOperator<TCurrent> _forkOperator;
 
         private ITelemetryProvider _telemetryProvider;
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
+
 
 
         private StreamBuilder(string name)
@@ -30,12 +33,14 @@ namespace Cortex.Streams
             _name = name;
         }
 
-        private StreamBuilder(string name, IOperator firstOperator, IOperator lastOperator, bool sourceAdded)
+        private StreamBuilder(string name, IOperator firstOperator, IOperator lastOperator, bool sourceAdded, StreamExecutionOptions executionOptions)
         {
             _name = name;
             _firstOperator = firstOperator;
             _lastOperator = lastOperator;
             _sourceAdded = sourceAdded;
+
+            _executionOptions = executionOptions;
         }
 
         /// <summary>
@@ -57,7 +62,7 @@ namespace Cortex.Streams
         /// <returns>An initial stream builder.</returns>
         public static IStreamBuilder<TIn, TCurrent> CreateNewStream(string name, IOperator firstOperator, IOperator lastOperator)
         {
-            return new StreamBuilder<TIn, TCurrent>(name, firstOperator, lastOperator, false);
+            return new StreamBuilder<TIn, TCurrent>(name, firstOperator, lastOperator, false, StreamExecutionOptions.Default);
         }
 
         /// <summary>
@@ -81,7 +86,7 @@ namespace Cortex.Streams
                 _lastOperator = mapOperator;
             }
 
-            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded);
+            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
         }
 
         /// <summary>
@@ -126,7 +131,7 @@ namespace Cortex.Streams
                 _lastOperator = sinkOperator;
             }
 
-            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions);
         }
 
         /// <summary>
@@ -148,7 +153,7 @@ namespace Cortex.Streams
                 _lastOperator = sinkAdapter;
             }
 
-            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions);
         }
 
         /// <summary>
@@ -201,7 +206,7 @@ namespace Cortex.Streams
         public IStream<TIn, TCurrent> Build()
         {
             //return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators);
-            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions);
 
         }
 
@@ -282,7 +287,7 @@ namespace Cortex.Streams
                 _lastOperator = groupByOperator;
             }
 
-            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded);
+            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
         }
 
         public IStreamBuilder<TIn, TCurrent> AggregateSilently<TKey, TAggregate>(Func<TCurrent, TKey> keySelector, Func<TAggregate, TCurrent, TAggregate> aggregateFunction, string stateStoreName = null, States.IDataStore<TKey, TAggregate> stateStore = null)
@@ -311,7 +316,7 @@ namespace Cortex.Streams
             }
 
             //return new StreamBuilder<TIn, KeyValuePair<TKey, TAggregate>>(_name, _firstOperator, _lastOperator, _sourceAdded);
-            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded);
+            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
         }
 
 
@@ -339,7 +344,7 @@ namespace Cortex.Streams
                 _lastOperator = groupByOperator;
             }
 
-            return new StreamBuilder<TIn, KeyValuePair<TKey, List<TCurrent>>>(_name, _firstOperator, _lastOperator, _sourceAdded);
+            return new StreamBuilder<TIn, KeyValuePair<TKey, List<TCurrent>>>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
         }
 
         public IStreamBuilder<TIn, KeyValuePair<TKey, TAggregate>> Aggregate<TKey, TAggregate>(Func<TCurrent, TKey> keySelector, Func<TAggregate, TCurrent, TAggregate> aggregateFunction, string stateStoreName = null, IDataStore<TKey, TAggregate> stateStore = null)
@@ -366,7 +371,7 @@ namespace Cortex.Streams
                 _lastOperator = aggregateOperator;
             }
 
-            return new StreamBuilder<TIn, KeyValuePair<TKey, TAggregate>>(_name, _firstOperator, _lastOperator, _sourceAdded);
+            return new StreamBuilder<TIn, KeyValuePair<TKey, TAggregate>>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
         }
 
         public IInitialStreamBuilder<TIn, TCurrent> WithTelemetry(ITelemetryProvider telemetryProvider)
@@ -425,7 +430,7 @@ namespace Cortex.Streams
                 _lastOperator = windowOperator;
             }
 
-            return new StreamBuilder<TIn, TWindowOutput>(_name, _firstOperator, _lastOperator, _sourceAdded)
+            return new StreamBuilder<TIn, TWindowOutput>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
             {
                 _telemetryProvider = this._telemetryProvider
             };
@@ -484,7 +489,7 @@ namespace Cortex.Streams
                 _lastOperator = windowOperator;
             }
 
-            return new StreamBuilder<TIn, TWindowOutput>(_name, _firstOperator, _lastOperator, _sourceAdded)
+            return new StreamBuilder<TIn, TWindowOutput>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
             {
                 _telemetryProvider = this._telemetryProvider
             };
@@ -540,7 +545,7 @@ namespace Cortex.Streams
                 _lastOperator = sessionOperator;
             }
 
-            return new StreamBuilder<TIn, TSessionOutput>(_name, _firstOperator, _lastOperator, _sourceAdded)
+            return new StreamBuilder<TIn, TSessionOutput>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
             {
                 _telemetryProvider = this._telemetryProvider
             };
@@ -577,7 +582,7 @@ namespace Cortex.Streams
                 _lastOperator = flatMapOperator;
             }
 
-            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded);
+            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
         }
 
         /// <summary>
@@ -623,10 +628,17 @@ namespace Cortex.Streams
                 _lastOperator = joinOperator;
             }
 
-            return new StreamBuilder<TIn, TResult>(_name, _firstOperator, _lastOperator, _sourceAdded)
+            return new StreamBuilder<TIn, TResult>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
             {
                 _telemetryProvider = this._telemetryProvider
             };
+        }
+
+        public IInitialStreamBuilder<TIn, TCurrent> WithErrorHandling(StreamExecutionOptions executionOptions)
+        {
+            _executionOptions = executionOptions ?? StreamExecutionOptions.Default;
+            _executionOptions.StreamName = _name;
+            return this;
         }
     }
 }

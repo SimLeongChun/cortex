@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.States.Operators;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 using Cortex.Telemetry;
 using System;
@@ -23,16 +24,26 @@ namespace Cortex.Streams
         private bool _isStarted;
 
         private readonly ITelemetryProvider _telemetryProvider;
+        private readonly StreamExecutionOptions _executionOptions;
 
-        internal Stream(string name, IOperator operatorChain, List<BranchOperator<TCurrent>> branchOperators, ITelemetryProvider telemetryProvider)
+
+        internal Stream(
+            string name,
+            IOperator operatorChain,
+            List<BranchOperator<TCurrent>> branchOperators,
+            ITelemetryProvider telemetryProvider,
+            StreamExecutionOptions executionOptions)
         {
             _name = name;
             _operatorChain = operatorChain;
             _branchOperators = branchOperators;
             _telemetryProvider = telemetryProvider;
+            _executionOptions = executionOptions;
 
             // Initialize telemetry in operators
             InitializeTelemetry(_operatorChain);
+            InitializeErrorHandling(_operatorChain);
+
         }
 
         private void InitializeTelemetry(IOperator op)
@@ -59,6 +70,35 @@ namespace Cortex.Streams
                 {
                     var nextOp = field.GetValue(op) as IOperator;
                     InitializeTelemetry(nextOp);
+                }
+            }
+        }
+
+        private void InitializeErrorHandling(IOperator op)
+        {
+            if (op == null)
+                return;
+
+            if (op is IErrorHandlingEnabled errorHandlingEnabled)
+            {
+                errorHandlingEnabled.SetErrorHandling(_executionOptions);
+            }
+
+            if (op is IHasNextOperators hasNextOperators)
+            {
+                foreach (var nextOp in hasNextOperators.GetNextOperators())
+                {
+                    InitializeErrorHandling(nextOp);
+                }
+            }
+            else
+            {
+                var field = op.GetType().GetField("_nextOperator",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                {
+                    var nextOp = field.GetValue(op) as IOperator;
+                    InitializeErrorHandling(nextOp);
                 }
             }
         }
@@ -100,18 +140,21 @@ namespace Cortex.Streams
         /// <param name="value">The data to emit.</param>
         public void Emit(TIn value)
         {
-            if (_isStarted)
-            {
-                if (_operatorChain is SourceOperatorAdapter<TIn>)
-                {
-                    throw new InvalidOperationException("Cannot manually emit data to a stream with a source operator.");
-                }
+            if (!_isStarted)
+                throw new InvalidOperationException("Stream has not been started.");
 
+            if (_operatorChain is SourceOperatorAdapter<TIn>)
+                throw new InvalidOperationException("Cannot manually emit data to a stream with a source operator.");
+
+            try
+            {
                 _operatorChain.Process(value);
             }
-            else
+            catch (StreamStoppedException)
             {
-                throw new InvalidOperationException("Stream has not been started.");
+                // Global error strategy requested a graceful stop
+                Stop();
+                // Swallow for graceful shutdown
             }
         }
 
@@ -131,15 +174,18 @@ namespace Cortex.Streams
             if (_operatorChain is SourceOperatorAdapter<TIn>)
                 throw new InvalidOperationException("Cannot manually emit data to a stream with a source operator.");
 
-            // We can only cancel before we queue the work, since operators are synchronous today.
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Dispatch pipeline work off the caller thread.
             return Task.Run(() =>
             {
-                // If you ever add cooperative cancellation to operators,
-                // plumb 'cancellationToken' through and honor it there.
-                _operatorChain.Process(value);
+                try
+                {
+                    _operatorChain.Process(value);
+                }
+                catch (StreamStoppedException)
+                {
+                    Stop();
+                }
             }, cancellationToken);
         }
 
