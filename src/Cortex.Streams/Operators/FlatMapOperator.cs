@@ -1,11 +1,8 @@
-﻿using Cortex.Streams.ErrorHandling;
-using Cortex.Telemetry;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Cortex.Telemetry;
+using Cortex.Streams.ErrorHandling;
 
 namespace Cortex.Streams.Operators
 {
@@ -15,7 +12,11 @@ namespace Cortex.Streams.Operators
     /// </summary>
     /// <typeparam name="TInput">The type of the input element.</typeparam>
     /// <typeparam name="TOutput">The type of the output element(s) produced.</typeparam>
-    public class FlatMapOperator<TInput, TOutput> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
+    public class FlatMapOperator<TInput, TOutput> :
+        IOperator,
+        IHasNextOperators,
+        ITelemetryEnabled,
+        IErrorHandlingEnabled
     {
         private readonly Func<TInput, IEnumerable<TOutput>> _flatMapFunction;
         private IOperator _nextOperator;
@@ -26,13 +27,12 @@ namespace Cortex.Streams.Operators
         private ICounter _emittedCounter;
         private IHistogram _processingTimeHistogram;
         private ITracer _tracer;
-
         private Action _incrementProcessedCounter;
         private Action _incrementEmittedCounter;
         private Action<double> _recordProcessingTime;
 
+        // Global error handling
         private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
-
 
         public FlatMapOperator(Func<TInput, IEnumerable<TOutput>> flatMapFunction)
         {
@@ -46,18 +46,34 @@ namespace Cortex.Streams.Operators
             if (_telemetryProvider != null)
             {
                 var metrics = _telemetryProvider.GetMetricsProvider();
-                _processedCounter = metrics.CreateCounter($"flatmap_operator_processed_{typeof(TInput).Name}_to_{typeof(TOutput).Name}", "Number of items processed by FlatMapOperator");
-                _emittedCounter = metrics.CreateCounter($"flatmap_operator_emitted_{typeof(TInput).Name}_to_{typeof(TOutput).Name}", "Number of items emitted by FlatMapOperator");
-                _processingTimeHistogram = metrics.CreateHistogram($"flatmap_operator_processing_time_{typeof(TInput).Name}_to_{typeof(TOutput).Name}", "Processing time for FlatMapOperator");
-                _tracer = _telemetryProvider.GetTracingProvider().GetTracer($"FlatMapOperator_{typeof(TInput).Name}_to_{typeof(TOutput).Name}");
 
-                // Cache delegates
+                _processedCounter = metrics.CreateCounter(
+                    $"flatmap_operator_processed_{typeof(TInput).Name}_to_{typeof(TOutput).Name}",
+                    "Number of items processed by FlatMapOperator");
+
+                _emittedCounter = metrics.CreateCounter(
+                    $"flatmap_operator_emitted_{typeof(TInput).Name}_to_{typeof(TOutput).Name}",
+                    "Number of items emitted by FlatMapOperator");
+
+                _processingTimeHistogram = metrics.CreateHistogram(
+                    $"flatmap_operator_processing_time_{typeof(TInput).Name}_to_{typeof(TOutput).Name}",
+                    "Processing time for FlatMapOperator");
+
+                _tracer = _telemetryProvider
+                    .GetTracingProvider()
+                    .GetTracer($"FlatMapOperator_{typeof(TInput).Name}_to_{typeof(TOutput).Name}");
+
                 _incrementProcessedCounter = () => _processedCounter.Increment();
                 _incrementEmittedCounter = () => _emittedCounter.Increment();
                 _recordProcessingTime = value => _processingTimeHistogram.Record(value);
             }
             else
             {
+                _processedCounter = null;
+                _emittedCounter = null;
+                _processingTimeHistogram = null;
+                _tracer = null;
+
                 _incrementProcessedCounter = null;
                 _incrementEmittedCounter = null;
                 _recordProcessingTime = null;
@@ -74,7 +90,6 @@ namespace Cortex.Streams.Operators
         {
             _executionOptions = options ?? StreamExecutionOptions.Default;
 
-            // Propagate to the next operator if it supports error handling
             if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
             {
                 nextWithErrorHandling.SetErrorHandling(_executionOptions);
@@ -86,13 +101,23 @@ namespace Cortex.Streams.Operators
             if (input == null)
                 throw new ArgumentNullException(nameof(input));
 
-            if (!(input is TInput typedInput))
-                throw new ArgumentException($"Expected input of type {typeof(TInput).Name}, but received {input.GetType().Name}", nameof(input));
+            TInput typedInput;
+            try
+            {
+                typedInput = (TInput)input;
+            }
+            catch (InvalidCastException)
+            {
+                throw new ArgumentException(
+                    $"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+            }
 
 
-            var operatorName = $"FlatMapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
-            IEnumerable<TOutput> outputs;
+            var operatorName =
+                $"FlatMapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
+
             bool executedSuccessfully;
+            IEnumerable<TOutput> outputs = Array.Empty<TOutput>();
 
             if (_telemetryProvider != null)
             {
@@ -101,10 +126,16 @@ namespace Cortex.Streams.Operators
                 {
                     try
                     {
-                        outputs = _flatMapFunction(typedInput) ?? Array.Empty<TOutput>();
-                        span.SetAttribute("status", "success");
-                        span.SetAttribute("input_type", typeof(TInput).Name);
-                        span.SetAttribute("output_type", typeof(TOutput).Name);
+                        executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, IEnumerable<TOutput>>(
+                            _executionOptions,
+                            operatorName,
+                            input,
+                            current => _flatMapFunction(current) ?? Array.Empty<TOutput>(),
+                            typedInput,
+                            out outputs);
+
+                        span.SetAttribute("status", executedSuccessfully ? "success" : "skipped");
+                        span.SetAttribute("flatmap_output_count", (executedSuccessfully ? ((outputs as ICollection<TOutput>)?.Count ?? -1) : -1).ToString());
                     }
                     catch (Exception ex)
                     {
@@ -122,21 +153,20 @@ namespace Cortex.Streams.Operators
             }
             else
             {
-                outputs = _flatMapFunction(typedInput) ?? Array.Empty<TOutput>();
+                executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, IEnumerable<TOutput>>(
+                    _executionOptions,
+                    operatorName,
+                    input,
+                    current => _flatMapFunction(current) ?? Array.Empty<TOutput>(),
+                    typedInput,
+                    out outputs);
             }
 
-            executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, IEnumerable<TOutput>>(
-                _executionOptions,
-                operatorName,
-                input,
-                _flatMapFunction,
-                typedInput,
-                out outputs);
-
+            // If the global error handling decided to Skip this element, do nothing
             if (!executedSuccessfully)
                 return;
 
-            // Emit each output element
+            // Emit downstream
             foreach (var output in outputs)
             {
                 _nextOperator?.Process(output);
@@ -148,12 +178,13 @@ namespace Cortex.Streams.Operators
         {
             _nextOperator = nextOperator;
 
-            // Propagate telemetry
-            if (_nextOperator is ITelemetryEnabled nextTelemetryEnabled && _telemetryProvider != null)
+            // Telemetry → downstream
+            if (_nextOperator is ITelemetryEnabled telemetryEnabled && _telemetryProvider != null)
             {
-                nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+                telemetryEnabled.SetTelemetryProvider(_telemetryProvider);
             }
 
+            // Error handling → downstream
             if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
             {
                 nextWithErrorHandling.SetErrorHandling(_executionOptions);
