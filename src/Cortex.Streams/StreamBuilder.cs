@@ -2,7 +2,7 @@
 using Cortex.Streams.Abstractions;
 using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
-using Cortex.Streams.Windows;
+using Cortex.Streams.Operators.Windows;
 using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
@@ -33,14 +33,13 @@ namespace Cortex.Streams
             _name = name;
         }
 
-        private StreamBuilder(string name, IOperator firstOperator, IOperator lastOperator, bool sourceAdded, StreamExecutionOptions executionOptions)
+        private StreamBuilder(string name, IOperator firstOperator, IOperator lastOperator, bool sourceAdded, ITelemetryProvider telemetryProvider = null)
         {
             _name = name;
             _firstOperator = firstOperator;
             _lastOperator = lastOperator;
             _sourceAdded = sourceAdded;
-
-            _executionOptions = executionOptions;
+            _telemetryProvider = telemetryProvider;
         }
 
         /// <summary>
@@ -86,7 +85,7 @@ namespace Cortex.Streams
                 _lastOperator = mapOperator;
             }
 
-            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
+            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
         }
 
         /// <summary>
@@ -287,7 +286,7 @@ namespace Cortex.Streams
                 _lastOperator = groupByOperator;
             }
 
-            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
+            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
         }
 
         public IStreamBuilder<TIn, TCurrent> AggregateSilently<TKey, TAggregate>(Func<TCurrent, TKey> keySelector, Func<TAggregate, TCurrent, TAggregate> aggregateFunction, string stateStoreName = null, States.IDataStore<TKey, TAggregate> stateStore = null)
@@ -316,7 +315,7 @@ namespace Cortex.Streams
             }
 
             //return new StreamBuilder<TIn, KeyValuePair<TKey, TAggregate>>(_name, _firstOperator, _lastOperator, _sourceAdded);
-            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
+            return new StreamBuilder<TIn, TCurrent>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
         }
 
 
@@ -344,7 +343,7 @@ namespace Cortex.Streams
                 _lastOperator = groupByOperator;
             }
 
-            return new StreamBuilder<TIn, KeyValuePair<TKey, List<TCurrent>>>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
+            return new StreamBuilder<TIn, KeyValuePair<TKey, List<TCurrent>>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
         }
 
         public IStreamBuilder<TIn, KeyValuePair<TKey, TAggregate>> Aggregate<TKey, TAggregate>(Func<TCurrent, TKey> keySelector, Func<TAggregate, TCurrent, TAggregate> aggregateFunction, string stateStoreName = null, IDataStore<TKey, TAggregate> stateStore = null)
@@ -371,184 +370,13 @@ namespace Cortex.Streams
                 _lastOperator = aggregateOperator;
             }
 
-            return new StreamBuilder<TIn, KeyValuePair<TKey, TAggregate>>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
+            return new StreamBuilder<TIn, KeyValuePair<TKey, TAggregate>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
         }
 
         public IInitialStreamBuilder<TIn, TCurrent> WithTelemetry(ITelemetryProvider telemetryProvider)
         {
             _telemetryProvider = telemetryProvider;
             return this;
-        }
-
-        /// <summary>
-        /// Adds a tumbling window operator to the stream.
-        /// </summary>
-        /// <typeparam name="TKey">The type of the key to group by.</typeparam>
-        /// <typeparam name="TWindowOutput">The type of the output after windowing.</typeparam>
-        /// <param name="keySelector">A function to extract the key from data.</param>
-        /// <param name="windowDuration">The duration of the tumbling window.</param>
-        /// <param name="windowFunction">A function to process the data in the window.</param>
-        /// <param name="windowStateStoreName">Optional name for the state store.</param>
-        /// <param name="windowResultsStateStoreName">Optional name for the results state store.</param>
-        /// <param name="windowStateStore">Optional state store instance for window state.</param>
-        /// <param name="windowResultsStateStore">Optional state store instance for window results.</param>
-        /// <returns>A stream builder with the new data type.</returns>
-        public IStreamBuilder<TIn, TWindowOutput> TumblingWindow<TKey, TWindowOutput>(
-            Func<TCurrent, TKey> keySelector,
-            TimeSpan windowDuration,
-            Func<IEnumerable<TCurrent>, TWindowOutput> windowFunction,
-            string windowStateStoreName = null,
-            string windowResultsStateStoreName = null,
-            IDataStore<TKey, WindowState<TCurrent>> windowStateStore = null,
-            IDataStore<WindowKey<TKey>, TWindowOutput> windowResultsStateStore = null)
-        {
-            if (windowStateStore == null)
-            {
-                if (string.IsNullOrEmpty(windowStateStoreName))
-                {
-                    windowStateStoreName = $"TumblingWindowStateStore_{Guid.NewGuid()}";
-                }
-                windowStateStore = new InMemoryStateStore<TKey, WindowState<TCurrent>>(windowStateStoreName);
-            }
-
-            if (windowResultsStateStore == null && !string.IsNullOrEmpty(windowResultsStateStoreName))
-            {
-                windowResultsStateStore = new InMemoryStateStore<WindowKey<TKey>, TWindowOutput>(windowResultsStateStoreName);
-            }
-
-            var windowOperator = new TumblingWindowOperator<TCurrent, TKey, TWindowOutput>(
-                keySelector, windowDuration, windowFunction, windowStateStore, windowResultsStateStore);
-
-            if (_firstOperator == null)
-            {
-                _firstOperator = windowOperator;
-                _lastOperator = windowOperator;
-            }
-            else
-            {
-                _lastOperator.SetNext(windowOperator);
-                _lastOperator = windowOperator;
-            }
-
-            return new StreamBuilder<TIn, TWindowOutput>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
-            {
-                _telemetryProvider = this._telemetryProvider
-            };
-        }
-
-
-        /// <summary>
-        /// Adds a sliding window operator to the stream.
-        /// </summary>
-        /// <typeparam name="TKey">The type of the key to group by.</typeparam>
-        /// <typeparam name="TWindowOutput">The type of the output after windowing.</typeparam>
-        /// <param name="keySelector">A function to extract the key from data.</param>
-        /// <param name="windowDuration">The duration of the sliding window.</param>
-        /// <param name="slideInterval">The interval at which the window slides.</param>
-        /// <param name="windowFunction">A function to process the data in the window.</param>
-        /// <param name="windowStateStoreName">Optional name for the state store.</param>
-        /// <param name="windowResultsStateStoreName">Optional name for the results state store.</param>
-        /// <param name="windowStateStore">Optional state store instance for window state.</param>
-        /// <param name="windowResultsStateStore">Optional state store instance for window results.</param>
-        /// <returns>A stream builder with the new data type.</returns>
-        public IStreamBuilder<TIn, TWindowOutput> SlidingWindow<TKey, TWindowOutput>(
-            Func<TCurrent, TKey> keySelector,
-            TimeSpan windowDuration,
-            TimeSpan slideInterval,
-            Func<IEnumerable<TCurrent>, TWindowOutput> windowFunction,
-            string windowStateStoreName = null,
-            string windowResultsStateStoreName = null,
-            IDataStore<WindowKey<TKey>, List<TCurrent>> windowStateStore = null,
-            IDataStore<WindowKey<TKey>, TWindowOutput> windowResultsStateStore = null)
-        {
-            if (windowStateStore == null)
-            {
-                if (string.IsNullOrEmpty(windowStateStoreName))
-                {
-                    windowStateStoreName = $"SlidingWindowStateStore_{Guid.NewGuid()}";
-                }
-                windowStateStore = new InMemoryStateStore<WindowKey<TKey>, List<TCurrent>>(windowStateStoreName);
-            }
-
-            if (windowResultsStateStore == null && !string.IsNullOrEmpty(windowResultsStateStoreName))
-            {
-                windowResultsStateStore = new InMemoryStateStore<WindowKey<TKey>, TWindowOutput>(windowResultsStateStoreName);
-            }
-
-            var windowOperator = new SlidingWindowOperator<TCurrent, TKey, TWindowOutput>(
-                keySelector, windowDuration, slideInterval, windowFunction, windowStateStore, windowResultsStateStore);
-
-            if (_firstOperator == null)
-            {
-                _firstOperator = windowOperator;
-                _lastOperator = windowOperator;
-            }
-            else
-            {
-                _lastOperator.SetNext(windowOperator);
-                _lastOperator = windowOperator;
-            }
-
-            return new StreamBuilder<TIn, TWindowOutput>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
-            {
-                _telemetryProvider = this._telemetryProvider
-            };
-        }
-
-        /// <summary>
-        /// Adds a session window operator to the stream.
-        /// </summary>
-        /// <typeparam name="TKey">The type of the key to group by.</typeparam>
-        /// <typeparam name="TSessionOutput">The type of the output after session windowing.</typeparam>
-        /// <param name="keySelector">A function to extract the key from data.</param>
-        /// <param name="inactivityGap">The inactivity gap duration to define session boundaries.</param>
-        /// <param name="sessionFunction">A function to process the data in the session.</param>
-        /// <param name="sessionStateStoreName">Optional name for the state store.</param>
-        /// <param name="sessionResultsStateStoreName">Optional name for the results state store.</param>
-        /// <param name="sessionStateStore">Optional state store instance for session state.</param>
-        /// <param name="sessionResultsStateStore">Optional state store instance for session results.</param>
-        /// <returns>A stream builder with the new data type.</returns>
-        public IStreamBuilder<TIn, TSessionOutput> SessionWindow<TKey, TSessionOutput>(
-            Func<TCurrent, TKey> keySelector,
-            TimeSpan inactivityGap,
-            Func<IEnumerable<TCurrent>, TSessionOutput> sessionFunction,
-            string sessionStateStoreName = null,
-            string sessionResultsStateStoreName = null,
-            IDataStore<TKey, SessionState<TCurrent>> sessionStateStore = null,
-            IDataStore<SessionKey<TKey>, TSessionOutput> sessionResultsStateStore = null)
-        {
-            if (sessionStateStore == null)
-            {
-                if (string.IsNullOrEmpty(sessionStateStoreName))
-                {
-                    sessionStateStoreName = $"SessionWindowStateStore_{Guid.NewGuid()}";
-                }
-                sessionStateStore = new InMemoryStateStore<TKey, SessionState<TCurrent>>(sessionStateStoreName);
-            }
-
-            if (sessionResultsStateStore == null && !string.IsNullOrEmpty(sessionResultsStateStoreName))
-            {
-                sessionResultsStateStore = new InMemoryStateStore<SessionKey<TKey>, TSessionOutput>(sessionResultsStateStoreName);
-            }
-
-            var sessionOperator = new SessionWindowOperator<TCurrent, TKey, TSessionOutput>(
-                keySelector, inactivityGap, sessionFunction, sessionStateStore, sessionResultsStateStore);
-
-            if (_firstOperator == null)
-            {
-                _firstOperator = sessionOperator;
-                _lastOperator = sessionOperator;
-            }
-            else
-            {
-                _lastOperator.SetNext(sessionOperator);
-                _lastOperator = sessionOperator;
-            }
-
-            return new StreamBuilder<TIn, TSessionOutput>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
-            {
-                _telemetryProvider = this._telemetryProvider
-            };
         }
 
         public IStreamBuilder<TIn, TCurrent> SetNext(IOperator customOperator)
@@ -582,7 +410,7 @@ namespace Cortex.Streams
                 _lastOperator = flatMapOperator;
             }
 
-            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions);
+            return new StreamBuilder<TIn, TNext>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
         }
 
         /// <summary>
@@ -628,10 +456,135 @@ namespace Cortex.Streams
                 _lastOperator = joinOperator;
             }
 
-            return new StreamBuilder<TIn, TResult>(_name, _firstOperator, _lastOperator, _sourceAdded, _executionOptions)
+            return new StreamBuilder<TIn, TResult>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
+        }
+
+        /// <summary>
+        /// Applies a tumbling window to the stream. Tumbling windows are fixed-size, non-overlapping windows.
+        /// </summary>
+        /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+        /// <param name="keySelector">A function to extract the key from each input item.</param>
+        /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+        /// <param name="windowSize">The size of each tumbling window.</param>
+        /// <param name="stateStoreName">Optional name for the state store.</param>
+        /// <param name="stateStore">Optional state store to use for storing window data.</param>
+        /// <returns>A stream builder emitting window results.</returns>
+        public IStreamBuilder<TIn, WindowResult<string, TCurrent>> TumblingWindow<TKey>(
+            Func<TCurrent, TKey> keySelector,
+            Func<TCurrent, DateTime> timestampSelector,
+            TimeSpan windowSize,
+            string stateStoreName = null,
+            IDataStore<string, List<TCurrent>> stateStore = null)
+        {
+            if (stateStore == null)
             {
-                _telemetryProvider = this._telemetryProvider
-            };
+                if (string.IsNullOrEmpty(stateStoreName))
+                {
+                    stateStoreName = $"TumblingWindowStateStore_{Guid.NewGuid()}";
+                }
+                stateStore = new InMemoryStateStore<string, List<TCurrent>>(stateStoreName);
+            }
+
+            var windowOperator = new TumblingWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, windowSize, stateStore);
+
+            if (_firstOperator == null)
+            {
+                _firstOperator = windowOperator;
+                _lastOperator = windowOperator;
+            }
+            else
+            {
+                _lastOperator.SetNext(windowOperator);
+                _lastOperator = windowOperator;
+            }
+
+            return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
+        }
+
+        /// <summary>
+        /// Applies a sliding window to the stream. Sliding windows have a fixed size but overlap based on the slide interval.
+        /// </summary>
+        /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+        /// <param name="keySelector">A function to extract the key from each input item.</param>
+        /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+        /// <param name="windowSize">The size of each sliding window.</param>
+        /// <param name="slideInterval">The interval at which the window slides.</param>
+        /// <param name="stateStoreName">Optional name for the state store.</param>
+        /// <param name="stateStore">Optional state store to use for storing window data.</param>
+        /// <returns>A stream builder emitting window results.</returns>
+        public IStreamBuilder<TIn, WindowResult<string, TCurrent>> SlidingWindow<TKey>(
+            Func<TCurrent, TKey> keySelector,
+            Func<TCurrent, DateTime> timestampSelector,
+            TimeSpan windowSize,
+            TimeSpan slideInterval,
+            string stateStoreName = null,
+            IDataStore<string, List<TCurrent>> stateStore = null)
+        {
+            if (stateStore == null)
+            {
+                if (string.IsNullOrEmpty(stateStoreName))
+                {
+                    stateStoreName = $"SlidingWindowStateStore_{Guid.NewGuid()}";
+                }
+                stateStore = new InMemoryStateStore<string, List<TCurrent>>(stateStoreName);
+            }
+
+            var windowOperator = new SlidingWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, windowSize, slideInterval, stateStore);
+
+            if (_firstOperator == null)
+            {
+                _firstOperator = windowOperator;
+                _lastOperator = windowOperator;
+            }
+            else
+            {
+                _lastOperator.SetNext(windowOperator);
+                _lastOperator = windowOperator;
+            }
+
+            return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
+        }
+
+        /// <summary>
+        /// Applies a session window to the stream. Session windows group events by activity sessions separated by inactivity gaps.
+        /// </summary>
+        /// <typeparam name="TKey">The type of the key used to partition sessions.</typeparam>
+        /// <param name="keySelector">A function to extract the key from each input item.</param>
+        /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+        /// <param name="inactivityGap">The duration of inactivity after which a session is closed.</param>
+        /// <param name="stateStoreName">Optional name for the state store.</param>
+        /// <param name="stateStore">Optional state store to use for storing session data.</param>
+        /// <returns>A stream builder emitting window results.</returns>
+        public IStreamBuilder<TIn, WindowResult<string, TCurrent>> SessionWindow<TKey>(
+            Func<TCurrent, TKey> keySelector,
+            Func<TCurrent, DateTime> timestampSelector,
+            TimeSpan inactivityGap,
+            string stateStoreName = null,
+            IDataStore<string, SessionState<TCurrent>> stateStore = null)
+        {
+            if (stateStore == null)
+            {
+                if (string.IsNullOrEmpty(stateStoreName))
+                {
+                    stateStoreName = $"SessionWindowStateStore_{Guid.NewGuid()}";
+                }
+                stateStore = new InMemoryStateStore<string, SessionState<TCurrent>>(stateStoreName);
+            }
+
+            var windowOperator = new SessionWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, inactivityGap, stateStore);
+
+            if (_firstOperator == null)
+            {
+                _firstOperator = windowOperator;
+                _lastOperator = windowOperator;
+            }
+            else
+            {
+                _lastOperator.SetNext(windowOperator);
+                _lastOperator = windowOperator;
+            }
+
+            return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
         }
 
         public IInitialStreamBuilder<TIn, TCurrent> WithErrorHandling(StreamExecutionOptions executionOptions)

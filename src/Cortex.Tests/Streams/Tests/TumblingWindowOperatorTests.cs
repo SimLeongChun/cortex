@@ -1,6 +1,6 @@
-﻿using Cortex.States;
+using Cortex.States;
 using Cortex.Streams.Operators;
-using Cortex.Streams.Windows;
+using Cortex.Streams.Operators.Windows;
 using Moq;
 
 namespace Cortex.Streams.Tests
@@ -8,48 +8,271 @@ namespace Cortex.Streams.Tests
     public class TumblingWindowOperatorTests
     {
         [Fact]
-        public void TumblingWindowOperator_WindowsDataCorrectly()
+        public void TumblingWindowOperator_GroupsItemsIntoWindows()
         {
             // Arrange
-            var windowDuration = TimeSpan.FromSeconds(5);
+            var windowSize = TimeSpan.FromSeconds(2);
+            var stateStore = new InMemoryStateStore<string, List<InputData>>("TumblingWindowStateStore");
+            var emittedResults = new List<WindowResult<string, InputData>>();
 
-            var emittedValues = new List<int>();
-            Action<int> sinkAction = output =>
+            var windowOperator = new TumblingWindowOperator<InputData, string>(
+                keySelector: x => x.Key,
+                timestampSelector: x => x.EventTime,
+                windowSize: windowSize,
+                stateStore: stateStore);
+
+            var sinkOperator = new SinkOperator<WindowResult<string, InputData>>(result =>
             {
-                emittedValues.Add(output);
-            };
+                lock (emittedResults)
+                {
+                    emittedResults.Add(result);
+                }
+            });
+            windowOperator.SetNext(sinkOperator);
 
-            var windowStateStore = new InMemoryStateStore<string, WindowState<InputData>>("WindowStateStore");
-            var windowResultsStateStore = new InMemoryStateStore<WindowKey<string>, int>("WindowResultsStateStore");
+            // Use a base time aligned to window boundary
+            var now = DateTime.UtcNow;
+            var windowTicks = windowSize.Ticks;
+            var alignedStart = new DateTime((now.Ticks / windowTicks) * windowTicks, DateTimeKind.Utc);
 
-            // Build the stream
+            // Act - emit items within the same window
+            windowOperator.Process(new InputData { Key = "A", Value = 1, EventTime = alignedStart.AddMilliseconds(100) });
+            windowOperator.Process(new InputData { Key = "A", Value = 2, EventTime = alignedStart.AddMilliseconds(500) });
+
+            // Wait for window to close
+            Thread.Sleep(3000);
+
+            // Assert - should have at least one window result with all items
+            Assert.True(emittedResults.Count >= 1);
+            var totalItems = emittedResults.SelectMany(r => r.Items).ToList();
+            Assert.Equal(2, totalItems.Count);
+            Assert.Equal(3, totalItems.Sum(x => x.Value));
+
+            // Cleanup
+            windowOperator.Dispose();
+        }
+
+        [Fact]
+        public void TumblingWindowOperator_SeparatesItemsByKey()
+        {
+            // Arrange
+            var windowSize = TimeSpan.FromSeconds(2);
+            var stateStore = new InMemoryStateStore<string, List<InputData>>("TumblingWindowStateStore");
+            var emittedResults = new List<WindowResult<string, InputData>>();
+
+            var windowOperator = new TumblingWindowOperator<InputData, string>(
+                keySelector: x => x.Key,
+                timestampSelector: x => x.EventTime,
+                windowSize: windowSize,
+                stateStore: stateStore);
+
+            var sinkOperator = new SinkOperator<WindowResult<string, InputData>>(result =>
+            {
+                lock (emittedResults)
+                {
+                    emittedResults.Add(result);
+                }
+            });
+            windowOperator.SetNext(sinkOperator);
+
+            var now = DateTime.UtcNow;
+
+            // Act - emit items for different keys
+            windowOperator.Process(new InputData { Key = "A", Value = 1, EventTime = now });
+            windowOperator.Process(new InputData { Key = "B", Value = 10, EventTime = now });
+            windowOperator.Process(new InputData { Key = "A", Value = 2, EventTime = now.AddMilliseconds(500) });
+            windowOperator.Process(new InputData { Key = "B", Value = 20, EventTime = now.AddMilliseconds(500) });
+
+            // Wait for windows to close
+            Thread.Sleep(2500);
+
+            // Assert
+            Assert.Equal(2, emittedResults.Count);
+
+            var keyAResult = emittedResults.FirstOrDefault(r => r.Key == "A");
+            var keyBResult = emittedResults.FirstOrDefault(r => r.Key == "B");
+
+            Assert.NotNull(keyAResult);
+            Assert.NotNull(keyBResult);
+            Assert.Equal(2, keyAResult.Items.Count);
+            Assert.Equal(3, keyAResult.Items.Sum(x => x.Value));
+            Assert.Equal(2, keyBResult.Items.Count);
+            Assert.Equal(30, keyBResult.Items.Sum(x => x.Value));
+
+            // Cleanup
+            windowOperator.Dispose();
+        }
+
+        [Fact]
+        public void TumblingWindowOperator_CreatesNewWindowAfterPreviousClosed()
+        {
+            // Arrange
+            var windowSize = TimeSpan.FromSeconds(1);
+            var stateStore = new InMemoryStateStore<string, List<InputData>>("TumblingWindowStateStore");
+            var emittedResults = new List<WindowResult<string, InputData>>();
+
+            var windowOperator = new TumblingWindowOperator<InputData, string>(
+                keySelector: x => x.Key,
+                timestampSelector: x => x.EventTime,
+                windowSize: windowSize,
+                stateStore: stateStore);
+
+            var sinkOperator = new SinkOperator<WindowResult<string, InputData>>(result =>
+            {
+                lock (emittedResults)
+                {
+                    emittedResults.Add(result);
+                }
+            });
+            windowOperator.SetNext(sinkOperator);
+
+            var now = DateTime.UtcNow;
+
+            // Act - first window
+            windowOperator.Process(new InputData { Key = "A", Value = 1, EventTime = now });
+
+            // Wait for first window to close
+            Thread.Sleep(1500);
+
+            // Second window
+            windowOperator.Process(new InputData { Key = "A", Value = 5, EventTime = now.AddSeconds(2) });
+
+            // Wait for second window to close
+            Thread.Sleep(1500);
+
+            // Assert
+            Assert.Equal(2, emittedResults.Count);
+            Assert.Equal(1, emittedResults[0].Items.Sum(x => x.Value));
+            Assert.Equal(5, emittedResults[1].Items.Sum(x => x.Value));
+
+            // Cleanup
+            windowOperator.Dispose();
+        }
+
+        [Fact]
+        public void TumblingWindowOperator_ThrowsOnNullKeySelector()
+        {
+            // Arrange & Act & Assert
+            var stateStore = new InMemoryStateStore<string, List<InputData>>("TumblingWindowStateStore");
+
+            Assert.Throws<ArgumentNullException>(() =>
+                new TumblingWindowOperator<InputData, string>(
+                    keySelector: null,
+                    timestampSelector: x => x.EventTime,
+                    windowSize: TimeSpan.FromSeconds(1),
+                    stateStore: stateStore));
+        }
+
+        [Fact]
+        public void TumblingWindowOperator_ThrowsOnNullTimestampSelector()
+        {
+            // Arrange & Act & Assert
+            var stateStore = new InMemoryStateStore<string, List<InputData>>("TumblingWindowStateStore");
+
+            Assert.Throws<ArgumentNullException>(() =>
+                new TumblingWindowOperator<InputData, string>(
+                    keySelector: x => x.Key,
+                    timestampSelector: null,
+                    windowSize: TimeSpan.FromSeconds(1),
+                    stateStore: stateStore));
+        }
+
+        [Fact]
+        public void TumblingWindowOperator_ThrowsOnNullStateStore()
+        {
+            // Arrange & Act & Assert
+            Assert.Throws<ArgumentNullException>(() =>
+                new TumblingWindowOperator<InputData, string>(
+                    keySelector: x => x.Key,
+                    timestampSelector: x => x.EventTime,
+                    windowSize: TimeSpan.FromSeconds(1),
+                    stateStore: null));
+        }
+
+        [Fact]
+        public void TumblingWindowOperator_ThreadSafety_NoExceptionsThrown()
+        {
+            // Arrange
+            var windowSize = TimeSpan.FromSeconds(2);
+            var stateStore = new InMemoryStateStore<string, List<InputData>>("TumblingWindowStateStore");
+            var emittedResults = new List<WindowResult<string, InputData>>();
+            var lockObj = new object();
+
+            var windowOperator = new TumblingWindowOperator<InputData, string>(
+                keySelector: x => x.Key,
+                timestampSelector: x => x.EventTime,
+                windowSize: windowSize,
+                stateStore: stateStore);
+
+            var sinkOperator = new SinkOperator<WindowResult<string, InputData>>(result =>
+            {
+                lock (lockObj)
+                {
+                    emittedResults.Add(result);
+                }
+            });
+            windowOperator.SetNext(sinkOperator);
+
+            var now = DateTime.UtcNow;
+
+            // Act - emit items from multiple threads
+            var tasks = new List<Task>();
+            for (int i = 0; i < 100; i++)
+            {
+                int value = i;
+                tasks.Add(Task.Run(() =>
+                {
+                    windowOperator.Process(new InputData { Key = "A", Value = value, EventTime = now });
+                }));
+            }
+
+            Task.WaitAll(tasks.ToArray());
+
+            // Wait for window to close
+            Thread.Sleep(2500);
+
+            // Assert
+            Assert.True(emittedResults.Count >= 1);
+            int totalSum = emittedResults.SelectMany(r => r.Items).Sum(x => x.Value);
+            int expectedSum = Enumerable.Range(0, 100).Sum();
+            Assert.Equal(expectedSum, totalSum);
+
+            // Cleanup
+            windowOperator.Dispose();
+        }
+
+        [Fact]
+        public void TumblingWindowOperator_IntegrationWithStreamBuilder()
+        {
+            // Arrange
+            var windowSize = TimeSpan.FromSeconds(2);
+            var emittedResults = new List<WindowResult<string, InputData>>();
+
             var stream = StreamBuilder<InputData, InputData>
-                .CreateNewStream("Test Stream")
+                .CreateNewStream("Test Tumbling Window Stream")
                 .Stream()
-                .TumblingWindow<string, int>(
-                    keySelector: input => input.Key,
-                    windowDuration: windowDuration,
-                    windowFunction: events => events.Sum(e => e.Value),
-                    windowStateStore: windowStateStore,
-                    windowResultsStateStore: windowResultsStateStore)
-                .Sink(sinkAction)
+                .TumblingWindow<string>(
+                    keySelector: x => x.Key,
+                    timestampSelector: x => x.EventTime,
+                    windowSize: windowSize)
+                .Sink(result => emittedResults.Add(result))
                 .Build();
 
             stream.Start();
 
+            var now = DateTime.UtcNow;
+
             // Act
-            var input1 = new InputData { Key = "A", Value = 1 };
-            stream.Emit(input1);
+            stream.Emit(new InputData { Key = "A", Value = 1, EventTime = now });
+            stream.Emit(new InputData { Key = "A", Value = 2, EventTime = now.AddMilliseconds(500) });
 
-            var input2 = new InputData { Key = "A", Value = 2 };
-            stream.Emit(input2);
-
-            // Wait for the window to close
-            Thread.Sleep(6000);
+            // Wait for window to close
+            Thread.Sleep(2500);
 
             // Assert
-            Assert.Single(emittedValues);
-            Assert.Equal(3, emittedValues[0]); // 1 + 2 = 3
+            Assert.Single(emittedResults);
+            Assert.Equal(2, emittedResults[0].Items.Count);
+            Assert.Equal(3, emittedResults[0].Items.Sum(x => x.Value));
 
             stream.Stop();
         }
@@ -58,126 +281,7 @@ namespace Cortex.Streams.Tests
         {
             public string Key { get; set; }
             public int Value { get; set; }
-        }
-
-
-        [Fact]
-        public void TumblingWindowOperator_ThreadSafety_NoExceptionsThrown_StreamBuilder()
-        {
-            // Arrange
-            var windowDuration = TimeSpan.FromSeconds(2);
-
-            var emittedValues = new List<int>();
-            object emittedValuesLock = new object();
-            Action<int> sinkAction = output =>
-            {
-                lock (emittedValuesLock)
-                {
-                    emittedValues.Add(output);
-                }
-            };
-
-            var windowStateStore = new InMemoryStateStore<string, WindowState<InputData>>("WindowStateStore");
-
-            // Build the stream
-            var stream = StreamBuilder<InputData, InputData>
-                .CreateNewStream("Test Stream")
-                .Stream()
-                .TumblingWindow<string, int>(
-                    keySelector: input => input.Key,
-                    windowDuration: windowDuration,
-                    windowFunction: events => events.Sum(e => e.Value),
-                    windowStateStore: windowStateStore)
-                .Sink(sinkAction)
-                .Build();
-
-            stream.Start();
-
-            // Act
-            var tasks = new List<Task>();
-            for (int i = 0; i < 100; i++)
-            {
-                int value = i;
-                tasks.Add(Task.Run(() =>
-                {
-                    var input = new InputData { Key = "A", Value = value };
-                    stream.Emit(input);
-                }));
-            }
-
-            Task.WaitAll(tasks.ToArray());
-
-            System.Threading.Thread.Sleep(3000); // Wait for windows to close
-
-            // Assert
-            Assert.True(emittedValues.Count > 0);
-            int totalInputSum = Enumerable.Range(0, 100).Sum();
-            int totalEmittedSum;
-            lock (emittedValuesLock)
-            {
-                totalEmittedSum = emittedValues.Sum();
-            }
-            Assert.Equal(totalInputSum, totalEmittedSum);
-
-            stream.Stop();
-        }
-
-        [Fact]
-        public void TumblingWindowOperator_StatePersistence_StateRestoredCorrectly_StreamBuilder()
-        {
-            // Arrange
-            var windowDuration = TimeSpan.FromSeconds(5);
-
-            var emittedValues = new List<int>();
-            Action<int> sinkAction = output =>
-            {
-                emittedValues.Add(output);
-            };
-
-            var windowStateStore = new InMemoryStateStore<string, WindowState<InputData>>("WindowStateStore");
-
-            // Build the first stream
-            var stream1 = StreamBuilder<InputData, InputData>
-                .CreateNewStream("Test Stream")
-                .Stream()
-                .TumblingWindow<string, int>(
-                    keySelector: input => input.Key,
-                    windowDuration: windowDuration,
-                    windowFunction: events => events.Sum(e => e.Value),
-                    windowStateStore: windowStateStore)
-                .Sink(sinkAction)
-                .Build();
-
-            stream1.Start();
-
-            // Act
-            stream1.Emit(new InputData { Key = "A", Value = 1 });
-
-            // Simulate application restart by creating a new stream with the same state store
-            stream1.Stop();
-
-            var stream2 = StreamBuilder<InputData, InputData>
-                .CreateNewStream("Test Stream")
-                .Stream()
-                .TumblingWindow<string, int>(
-                    keySelector: input => input.Key,
-                    windowDuration: windowDuration,
-                    windowFunction: events => events.Sum(e => e.Value),
-                    windowStateStore: windowStateStore)
-                .Sink(sinkAction)
-                .Build();
-
-            stream2.Start();
-
-            stream2.Emit(new InputData { Key = "A", Value = 2 });
-            stream2.Stop();
-
-            Thread.Sleep(5010); // Wait for window to close
-
-            // Assert
-            //Assert.Single(emittedValues);
-            Assert.Equal(3, emittedValues[0]); // 1 + 2 = 3
-
+            public DateTime EventTime { get; set; }
         }
     }
 }

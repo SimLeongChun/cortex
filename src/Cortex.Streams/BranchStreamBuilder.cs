@@ -1,6 +1,7 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Abstractions;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Operators.Windows;
 using System;
 using System.Collections.Generic;
 
@@ -313,11 +314,154 @@ namespace Cortex.Streams
             }
 
             return new BranchStreamBuilder<TIn, TResult>(_name)
-            {
-                _firstOperator = _firstOperator,
-                _lastOperator = _lastOperator,
-                _sourceAdded = _sourceAdded,
-            };
-        }
-    }
-}
+                        {
+                            _firstOperator = _firstOperator,
+                            _lastOperator = _lastOperator,
+                            _sourceAdded = _sourceAdded,
+                        };
+                    }
+
+                    /// <summary>
+                    /// Applies a tumbling window to the branch. Tumbling windows are fixed-size, non-overlapping windows.
+                    /// </summary>
+                    /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+                    /// <param name="keySelector">A function to extract the key from each input item.</param>
+                    /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+                    /// <param name="windowSize">The size of each tumbling window.</param>
+                    /// <param name="stateStoreName">Optional name for the state store.</param>
+                    /// <param name="stateStore">Optional state store to use for storing window data.</param>
+                    /// <returns>A branch stream builder emitting window results.</returns>
+                    public IBranchStreamBuilder<TIn, WindowResult<string, TCurrent>> TumblingWindow<TKey>(
+                        Func<TCurrent, TKey> keySelector,
+                        Func<TCurrent, DateTime> timestampSelector,
+                        TimeSpan windowSize,
+                        string stateStoreName = null,
+                        IDataStore<string, List<TCurrent>> stateStore = null)
+                    {
+                        if (stateStore == null)
+                        {
+                            if (string.IsNullOrEmpty(stateStoreName))
+                            {
+                                stateStoreName = $"TumblingWindowStateStore_{Guid.NewGuid()}";
+                            }
+                            stateStore = new InMemoryStateStore<string, List<TCurrent>>(stateStoreName);
+                        }
+
+                        var windowOperator = new TumblingWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, windowSize, stateStore);
+
+                        if (_firstOperator == null)
+                        {
+                            _firstOperator = windowOperator;
+                            _lastOperator = windowOperator;
+                        }
+                        else
+                        {
+                            _lastOperator.SetNext(windowOperator);
+                            _lastOperator = windowOperator;
+                        }
+
+                        return new BranchStreamBuilder<TIn, WindowResult<string, TCurrent>>(_name)
+                        {
+                            _firstOperator = _firstOperator,
+                            _lastOperator = _lastOperator,
+                            _sourceAdded = _sourceAdded
+                        };
+                    }
+
+                    /// <summary>
+                    /// Applies a sliding window to the branch. Sliding windows have a fixed size but overlap based on the slide interval.
+                    /// </summary>
+                    /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+                    /// <param name="keySelector">A function to extract the key from each input item.</param>
+                    /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+                    /// <param name="windowSize">The size of each sliding window.</param>
+                    /// <param name="slideInterval">The interval at which the window slides.</param>
+                    /// <param name="stateStoreName">Optional name for the state store.</param>
+                    /// <param name="stateStore">Optional state store to use for storing window data.</param>
+                    /// <returns>A branch stream builder emitting window results.</returns>
+                    public IBranchStreamBuilder<TIn, WindowResult<string, TCurrent>> SlidingWindow<TKey>(
+                        Func<TCurrent, TKey> keySelector,
+                        Func<TCurrent, DateTime> timestampSelector,
+                        TimeSpan windowSize,
+                        TimeSpan slideInterval,
+                        string stateStoreName = null,
+                        IDataStore<string, List<TCurrent>> stateStore = null)
+                    {
+                        if (stateStore == null)
+                        {
+                            if (string.IsNullOrEmpty(stateStoreName))
+                            {
+                                stateStoreName = $"SlidingWindowStateStore_{Guid.NewGuid()}";
+                            }
+                            stateStore = new InMemoryStateStore<string, List<TCurrent>>(stateStoreName);
+                        }
+
+                        var windowOperator = new SlidingWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, windowSize, slideInterval, stateStore);
+
+                        if (_firstOperator == null)
+                        {
+                            _firstOperator = windowOperator;
+                            _lastOperator = windowOperator;
+                        }
+                        else
+                        {
+                            _lastOperator.SetNext(windowOperator);
+                            _lastOperator = windowOperator;
+                        }
+
+                        return new BranchStreamBuilder<TIn, WindowResult<string, TCurrent>>(_name)
+                        {
+                            _firstOperator = _firstOperator,
+                            _lastOperator = _lastOperator,
+                            _sourceAdded = _sourceAdded
+                        };
+                    }
+
+                    /// <summary>
+                    /// Applies a session window to the branch. Session windows group events by activity sessions separated by inactivity gaps.
+                    /// </summary>
+                    /// <typeparam name="TKey">The type of the key used to partition sessions.</typeparam>
+                    /// <param name="keySelector">A function to extract the key from each input item.</param>
+                    /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+                    /// <param name="inactivityGap">The duration of inactivity after which a session is closed.</param>
+                    /// <param name="stateStoreName">Optional name for the state store.</param>
+                    /// <param name="stateStore">Optional state store to use for storing session data.</param>
+                    /// <returns>A branch stream builder emitting window results.</returns>
+                    public IBranchStreamBuilder<TIn, WindowResult<string, TCurrent>> SessionWindow<TKey>(
+                        Func<TCurrent, TKey> keySelector,
+                        Func<TCurrent, DateTime> timestampSelector,
+                        TimeSpan inactivityGap,
+                        string stateStoreName = null,
+                        IDataStore<string, SessionState<TCurrent>> stateStore = null)
+                    {
+                        if (stateStore == null)
+                        {
+                            if (string.IsNullOrEmpty(stateStoreName))
+                            {
+                                stateStoreName = $"SessionWindowStateStore_{Guid.NewGuid()}";
+                            }
+                            stateStore = new InMemoryStateStore<string, SessionState<TCurrent>>(stateStoreName);
+                        }
+
+                        var windowOperator = new SessionWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, inactivityGap, stateStore);
+
+                        if (_firstOperator == null)
+                        {
+                            _firstOperator = windowOperator;
+                            _lastOperator = windowOperator;
+                        }
+                        else
+                        {
+                            _lastOperator.SetNext(windowOperator);
+                            _lastOperator = windowOperator;
+                        }
+
+                        return new BranchStreamBuilder<TIn, WindowResult<string, TCurrent>>(_name)
+                        {
+                            _firstOperator = _firstOperator,
+                            _lastOperator = _lastOperator,
+                            _sourceAdded = _sourceAdded
+                        };
+                    }
+                }
+            }

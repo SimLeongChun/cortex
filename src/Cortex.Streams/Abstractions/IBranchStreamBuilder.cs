@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Operators.Windows;
 using System;
 using System.Collections.Generic;
 
@@ -110,22 +111,76 @@ namespace Cortex.Streams.Abstractions
         /// An <see cref="IBranchStreamBuilder{TIn, TResult}"/> representing the pipeline after the join operation.
         /// </returns>
         IBranchStreamBuilder<TIn, TResult> Join<TRight, TKey, TResult>(
-            IDataStore<TKey, TRight> rightStateStore,
-            Func<TCurrent, TKey> keySelector,
-            Func<TCurrent, TRight, TResult> joinFunction);
+                    IDataStore<TKey, TRight> rightStateStore,
+                    Func<TCurrent, TKey> keySelector,
+                    Func<TCurrent, TRight, TResult> joinFunction);
+
+
+                /// <summary>
+                /// Applies a tumbling window to the branch. Tumbling windows are fixed-size, non-overlapping windows.
+                /// </summary>
+                /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+                /// <param name="keySelector">A function to extract the key from each input item.</param>
+                /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+                /// <param name="windowSize">The size of each tumbling window.</param>
+                /// <param name="stateStoreName">Optional name for the state store.</param>
+                /// <param name="stateStore">Optional state store to use for storing window data.</param>
+                /// <returns>A branch stream builder emitting window results.</returns>
+                IBranchStreamBuilder<TIn, WindowResult<string, TCurrent>> TumblingWindow<TKey>(
+                    Func<TCurrent, TKey> keySelector,
+                    Func<TCurrent, DateTime> timestampSelector,
+                    TimeSpan windowSize,
+                    string stateStoreName = null,
+                    IDataStore<string, List<TCurrent>> stateStore = null);
+
+                /// <summary>
+                /// Applies a sliding window to the branch. Sliding windows have a fixed size but overlap based on the slide interval.
+                /// </summary>
+                /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+                /// <param name="keySelector">A function to extract the key from each input item.</param>
+                /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+                /// <param name="windowSize">The size of each sliding window.</param>
+                /// <param name="slideInterval">The interval at which the window slides.</param>
+                /// <param name="stateStoreName">Optional name for the state store.</param>
+                /// <param name="stateStore">Optional state store to use for storing window data.</param>
+                /// <returns>A branch stream builder emitting window results.</returns>
+                IBranchStreamBuilder<TIn, WindowResult<string, TCurrent>> SlidingWindow<TKey>(
+                    Func<TCurrent, TKey> keySelector,
+                    Func<TCurrent, DateTime> timestampSelector,
+                    TimeSpan windowSize,
+                    TimeSpan slideInterval,
+                    string stateStoreName = null,
+                    IDataStore<string, List<TCurrent>> stateStore = null);
+
+                /// <summary>
+                /// Applies a session window to the branch. Session windows group events by activity sessions separated by inactivity gaps.
+                /// </summary>
+                /// <typeparam name="TKey">The type of the key used to partition sessions.</typeparam>
+                /// <param name="keySelector">A function to extract the key from each input item.</param>
+                /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+                /// <param name="inactivityGap">The duration of inactivity after which a session is closed.</param>
+                /// <param name="stateStoreName">Optional name for the state store.</param>
+                /// <param name="stateStore">Optional state store to use for storing session data.</param>
+                /// <returns>A branch stream builder emitting window results.</returns>
+                IBranchStreamBuilder<TIn, WindowResult<string, TCurrent>> SessionWindow<TKey>(
+                    Func<TCurrent, TKey> keySelector,
+                    Func<TCurrent, DateTime> timestampSelector,
+                    TimeSpan inactivityGap,
+                    string stateStoreName = null,
+                    IDataStore<string, SessionState<TCurrent>> stateStore = null);
 
 
 
-        /// <summary>
-        /// Adds a sink function to the branch to consume data.
-        /// </summary>
-        /// <param name="sinkFunction">An action to consume data.</param>
-        void Sink(Action<TCurrent> sinkFunction);
+                /// <summary>
+                /// Adds a sink function to the branch to consume data.
+                /// </summary>
+                /// <param name="sinkFunction">An action to consume data.</param>
+                void Sink(Action<TCurrent> sinkFunction);
 
-        /// <summary>
-        /// Adds a sink operator to the branch to consume data.
-        /// </summary>
-        /// <param name="sinkOperator">A sink operator to consume data.</param>
-        void Sink(ISinkOperator<TCurrent> sinkOperator);
-    }
-}
+                /// <summary>
+                /// Adds a sink operator to the branch to consume data.
+                /// </summary>
+                /// <param name="sinkOperator">A sink operator to consume data.</param>
+                void Sink(ISinkOperator<TCurrent> sinkOperator);
+            }
+        }
