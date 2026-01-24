@@ -27,6 +27,7 @@
     <ProjectReference Include="..\Cortex.Mediator.Behaviors.FluentValidation\Cortex.Mediator.Behaviors.FluentValidation.csproj" />
     <ProjectReference Include="..\Cortex.Mediator\Cortex.Mediator.csproj" />
     <ProjectReference Include="..\Cortex.Streams\Cortex.Streams.csproj" />
+    <ProjectReference Include="..\Cortex.Telemetry\Cortex.Telemetry.csproj" />
   </ItemGroup>
 
   <ItemGroup>
