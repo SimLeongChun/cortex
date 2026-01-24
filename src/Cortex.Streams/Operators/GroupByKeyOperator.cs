@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.States.Operators;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
@@ -7,11 +8,13 @@ using System.Diagnostics;
 
 namespace Cortex.Streams.Operators
 {
-    public class GroupByKeyOperator<TInput, TKey> : IOperator, IStatefulOperator, ITelemetryEnabled
+    public class GroupByKeyOperator<TInput, TKey> : IOperator, IStatefulOperator, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Func<TInput, TKey> _keySelector;
         private readonly IDataStore<TKey, List<TInput>> _stateStore;
         private IOperator _nextOperator;
+
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
@@ -55,30 +58,76 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            // Propagate to the next operator if it supports error handling
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
+        }
+
         public void Process(object input)
         {
 
-            var typedInput = (TInput)input;
-            var key = _keySelector(typedInput);
-            List<TInput> group;
+
+            TInput typedInput;
+            try
+            {
+                typedInput = (TInput)input;
+            }
+            catch (InvalidCastException)
+            {
+                throw new ArgumentException(
+                    $"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+            }
+
+            var operatorName =
+                $"GroupByKeyOperator<{typeof(TInput).Name},{typeof(TKey).Name}>";
+
+            bool executedSuccessfully;
+            TKey key = default;
+            List<TInput> group = null;
+            KeyValuePair<TKey, List<TInput>> result = default;
 
             if (_telemetryProvider != null)
             {
+                var stopwatch = Stopwatch.StartNew();
+
                 using (var span = _tracer.StartSpan("GroupByKeyOperator.Process"))
                 {
-                    var stopwatch = Stopwatch.StartNew();
                     try
                     {
+                        executedSuccessfully =
+                            ErrorHandlingHelper.TryExecute<TInput, KeyValuePair<TKey, List<TInput>>>(
+                                _executionOptions,
+                                operatorName,
+                                input,
+                                current =>
+                                {
+                                    key = _keySelector(current);
 
-                        lock (_stateStore)
+                                    lock (_stateStore)
+                                    {
+                                        group = _stateStore.Get(key) ?? new List<TInput>();
+                                        group.Add(current);
+                                        _stateStore.Put(key, group);
+                                    }
+
+                                    return new KeyValuePair<TKey, List<TInput>>(key, group);
+                                },
+                                typedInput,
+                                out result);
+
+                        if (executedSuccessfully)
                         {
-                            group = _stateStore.Get(key) ?? new List<TInput>();
-                            group.Add(typedInput);
-                            _stateStore.Put(key, group);
+                            span.SetAttribute("key", key?.ToString());
+                            span.SetAttribute("group_size", group?.Count.ToString());
                         }
-                        span.SetAttribute("key", key.ToString());
-                        span.SetAttribute("group_size", group.Count.ToString());
-                        span.SetAttribute("status", "success");
+
+                        span.SetAttribute("status", executedSuccessfully ? "success" : "skipped");
                     }
                     catch (Exception ex)
                     {
@@ -89,22 +138,41 @@ namespace Cortex.Streams.Operators
                     finally
                     {
                         stopwatch.Stop();
-                        _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                        _incrementProcessedCounter();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
             }
             else
             {
-                lock (_stateStore)
-                {
-                    group = _stateStore.Get(key) ?? new List<TInput>();
-                    group.Add(typedInput);
-                    _stateStore.Put(key, group);
-                }
+                executedSuccessfully =
+                    ErrorHandlingHelper.TryExecute<TInput, KeyValuePair<TKey, List<TInput>>>(
+                        _executionOptions,
+                        operatorName,
+                        input,
+                        current =>
+                        {
+                            var localKey = _keySelector(current);
+                            List<TInput> localGroup;
+
+                            lock (_stateStore)
+                            {
+                                localGroup = _stateStore.Get(localKey) ?? new List<TInput>();
+                                localGroup.Add(current);
+                                _stateStore.Put(localKey, localGroup);
+                            }
+
+                            return new KeyValuePair<TKey, List<TInput>>(localKey, localGroup);
+                        },
+                        typedInput,
+                        out result);
             }
 
-            _nextOperator?.Process(new KeyValuePair<TKey, List<TInput>>(key, group));
+            // If handler decided to Skip → do not pass downstream
+            if (!executedSuccessfully)
+                return;
+
+            _nextOperator?.Process(result);
         }
 
         public void SetNext(IOperator nextOperator)
@@ -115,6 +183,11 @@ namespace Cortex.Streams.Operators
             if (_nextOperator is ITelemetryEnabled nextTelemetryEnabled && _telemetryProvider != null)
             {
                 nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
             }
         }
 

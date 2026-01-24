@@ -1,4 +1,5 @@
 ﻿using Cortex.Streams;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 
 namespace Cortex.Tests.Streams.Tests

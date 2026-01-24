@@ -1,4 +1,5 @@
-﻿using Cortex.Streams.Operators;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Streams.Operators;
 using Cortex.Telemetry;
 using System;
 
@@ -28,5 +29,14 @@ namespace Cortex.Streams.Abstractions
         /// <returns></returns>
         /// <exception cref="InvalidOperationException"></exception>
         IInitialStreamBuilder<TIn, TCurrent> WithTelemetry(ITelemetryProvider telemetryProvider);
+
+
+        /// <summary>
+        /// Configure global error handling for the stream.
+        /// </summary>
+        /// <param name="executionOptions">Execution options controlling error handling strategy and callbacks.</param>
+        /// <returns>The initial builder for chaining.</returns>
+        IInitialStreamBuilder<TIn, TCurrent> WithErrorHandling(StreamExecutionOptions executionOptions);
+
     }
 }

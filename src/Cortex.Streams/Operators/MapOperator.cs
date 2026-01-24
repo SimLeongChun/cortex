@@ -1,4 +1,5 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,7 +11,7 @@ namespace Cortex.Streams.Operators
     /// </summary>
     /// <typeparam name="TInput">The input data type.</typeparam>
     /// <typeparam name="TOutput">The output data type after transformation.</typeparam>
-    public class MapOperator<TInput, TOutput> : IOperator, IHasNextOperators, ITelemetryEnabled
+    public class MapOperator<TInput, TOutput> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Func<TInput, TOutput> _mapFunction;
         private IOperator _nextOperator;
@@ -22,6 +23,8 @@ namespace Cortex.Streams.Operators
         private ITracer _tracer;
         private Action _incrementProcessedCounter;
         private Action<double> _recordProcessingTime;
+
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         public MapOperator(Func<TInput, TOutput> mapFunction)
         {
@@ -58,46 +61,59 @@ namespace Cortex.Streams.Operators
 
         public void Process(object input)
         {
+            if (!(input is TInput typedInput))
+                throw new ArgumentException($"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+
+            var operatorName = $"MapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
             TOutput output;
+            bool shouldContinue;
 
-            if (input != null)
+            if (_telemetryProvider != null)
             {
-                if (_telemetryProvider != null)
+                var stopwatch = Stopwatch.StartNew();
+                using (var span = _tracer.StartSpan("MapOperator.Process"))
                 {
-                    var stopwatch = Stopwatch.StartNew();
-
-                    using (var span = _tracer.StartSpan("MapOperator.Process"))
+                    try
                     {
-                        try
-                        {
-                            output = _mapFunction((TInput)input);
-                            span.SetAttribute("status", "success");
-                        }
-                        catch (Exception ex)
-                        {
-                            span.SetAttribute("status", "error");
-                            span.SetAttribute("exception", ex.Message);
-                            throw;
-                        }
-                        finally
-                        {
-                            stopwatch.Stop();
-                            _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                            _incrementProcessedCounter();
-                        }
+                        shouldContinue = ErrorHandlingHelper.TryExecute<TInput, TOutput>(
+                            _executionOptions,
+                            operatorName,
+                            input,
+                            _mapFunction,
+                            typedInput,
+                            out output);
+
+                        span.SetAttribute("status", shouldContinue ? "success" : "skipped");
+                    }
+                    catch (Exception ex)
+                    {
+                        span.SetAttribute("status", "error");
+                        span.SetAttribute("exception", ex.ToString());
+                        throw;
+                    }
+                    finally
+                    {
+                        stopwatch.Stop();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
-                else
-                {
-                    output = _mapFunction((TInput)input);
-                }
-
-                _nextOperator?.Process(output);
             }
             else
             {
-                throw new ArgumentNullException("Input cannot be null");
+                shouldContinue = ErrorHandlingHelper.TryExecute<TInput, TOutput>(
+                    _executionOptions,
+                    operatorName,
+                    input,
+                    _mapFunction,
+                    typedInput,
+                    out output);
             }
+
+            if (!shouldContinue)
+                return; // element skipped
+
+            _nextOperator?.Process(output);
         }
 
         public void SetNext(IOperator nextOperator)
@@ -109,12 +125,28 @@ namespace Cortex.Streams.Operators
             {
                 telemetryEnabled.SetTelemetryProvider(_telemetryProvider);
             }
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
         }
 
         public IEnumerable<IOperator> GetNextOperators()
         {
             if (_nextOperator != null)
                 yield return _nextOperator;
+        }
+
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            // Propagate to the next operator if it supports error handling
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
         }
     }
 }

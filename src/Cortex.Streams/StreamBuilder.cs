@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Abstractions;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 using Cortex.Streams.Operators.Windows;
 using Cortex.Telemetry;
@@ -23,6 +24,8 @@ namespace Cortex.Streams
         private ForkOperator<TCurrent> _forkOperator;
 
         private ITelemetryProvider _telemetryProvider;
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
+
 
 
         private StreamBuilder(string name)
@@ -58,7 +61,7 @@ namespace Cortex.Streams
         /// <returns>An initial stream builder.</returns>
         public static IStreamBuilder<TIn, TCurrent> CreateNewStream(string name, IOperator firstOperator, IOperator lastOperator)
         {
-            return new StreamBuilder<TIn, TCurrent>(name, firstOperator, lastOperator, false);
+            return new StreamBuilder<TIn, TCurrent>(name, firstOperator, lastOperator, false, StreamExecutionOptions.Default);
         }
 
         /// <summary>
@@ -127,7 +130,7 @@ namespace Cortex.Streams
                 _lastOperator = sinkOperator;
             }
 
-            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions);
         }
 
         /// <summary>
@@ -149,7 +152,7 @@ namespace Cortex.Streams
                 _lastOperator = sinkAdapter;
             }
 
-            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new SinkBuilder<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions);
         }
 
         /// <summary>
@@ -202,7 +205,7 @@ namespace Cortex.Streams
         public IStream<TIn, TCurrent> Build()
         {
             //return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators);
-            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions);
 
         }
 
@@ -582,6 +585,13 @@ namespace Cortex.Streams
             }
 
             return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider);
+        }
+
+        public IInitialStreamBuilder<TIn, TCurrent> WithErrorHandling(StreamExecutionOptions executionOptions)
+        {
+            _executionOptions = executionOptions ?? StreamExecutionOptions.Default;
+            _executionOptions.StreamName = _name;
+            return this;
         }
     }
 }
