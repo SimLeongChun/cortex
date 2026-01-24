@@ -13,12 +13,18 @@ namespace Cortex.Mediator.Behaviors.FluentValidation
 
         private readonly IEnumerable<IValidator<TQuery>> _validators;
 
+        public ValidationQueryBehavior(IEnumerable<IValidator<TQuery>> validators)
+        {
+            _validators = validators;
+        }
+
 
         public async Task<TResult> Handle(TQuery query, QueryHandlerDelegate<TResult> next, CancellationToken cancellationToken)
         {
             var context = new ValidationContext<TQuery>(query);
             var failures = _validators
-                .Select(v => v.Validate(context))
+                .Select(async v => await v.ValidateAsync(context))
+                .Select(r => r.Result)
                 .SelectMany(r => r.Errors)
                 .Where(f => f != null)
                 .ToList();

@@ -10,8 +10,8 @@ namespace Cortex.Mediator.Behaviors
     /// <summary>
     /// Pipeline behavior for validation command execution.
     /// </summary>
-    public sealed class ValidationCommandBehavior<TCommand, TResult> : ICommandPipelineBehavior<TCommand, TResult>
-        where TCommand : ICommand<TResult>
+    public sealed class ValidationCommandBehavior<TCommand> : ICommandPipelineBehavior<TCommand>
+        where TCommand : ICommand
     {
         private readonly IEnumerable<IValidator<TCommand>> _validators;
 
@@ -20,7 +20,8 @@ namespace Cortex.Mediator.Behaviors
             _validators = validators;
         }
 
-        public async Task<TResult> Handle(TCommand command, CommandHandlerDelegate<TResult> next, CancellationToken cancellationToken)
+
+        public async Task Handle(TCommand command, CommandHandlerDelegate next, CancellationToken cancellationToken)
         {
             var context = new ValidationContext<TCommand>(command);
             var failures = _validators
@@ -41,7 +42,7 @@ namespace Cortex.Mediator.Behaviors
                 throw new Exceptions.ValidationException(errors);
             }
 
-            return await next();
+            await next();
         }
     }
 }
