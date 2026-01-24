@@ -15,12 +15,18 @@ namespace Cortex.Mediator.Behaviors
     {
         private readonly IEnumerable<IValidator<TCommand>> _validators;
 
+        public ValidationCommandBehavior(IEnumerable<IValidator<TCommand>> validators)
+        {
+            _validators = validators;
+        }
+
 
         public async Task Handle(TCommand command, CommandHandlerDelegate next, CancellationToken cancellationToken)
         {
             var context = new ValidationContext<TCommand>(command);
             var failures = _validators
-                .Select(v => v.Validate(context))
+                .Select(async v => await v.ValidateAsync(context))
+                .Select(r => r.Result)
                 .SelectMany(r => r.Errors)
                 .Where(f => f != null)
                 .ToList();
