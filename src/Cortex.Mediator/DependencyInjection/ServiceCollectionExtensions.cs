@@ -15,9 +15,8 @@ namespace Cortex.Mediator.DependencyInjection
     {
         public static IServiceCollection AddCortexMediator(
             this IServiceCollection services,
-            IConfiguration configuration,
             Type[] handlerAssemblyMarkerTypes,
-            Action<MediatorOptions>? configure = null)
+            Action<MediatorOptions> configure = null)
         {
             var options = new MediatorOptions();
             configure?.Invoke(options);
