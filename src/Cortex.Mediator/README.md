@@ -69,6 +69,22 @@ public class CreateUserCommandHandler : ICommandHandler<CreateUserCommand,Guid>
 }
 ```
 
+### Sending Commands
+
+**Simplified API (Recommended)** - Type is automatically inferred:
+```csharp
+// Using extension methods - no need to specify type parameters!
+var userId = await mediator.SendAsync(command);
+
+// For void commands (no return value)
+await mediator.SendAsync(new DeleteUserCommand { UserId = userId });
+```
+
+**Explicit Type Parameters** (Legacy):
+```csharp
+var userId = await mediator.SendCommandAsync<CreateUserCommand, Guid>(command);
+```
+
 ### Validator (Optional, via FluentValidation)
 ```csharp
 public class CreateUserValidator : AbstractValidator<CreateUserCommand>
@@ -100,6 +116,19 @@ public class GetUserQueryHandler : IQueryHandler<GetUserQuery, GetUserResponse>
     }
 }
 
+```
+
+### Sending Queries
+
+**Simplified API (Recommended)** - Type is automatically inferred:
+```csharp
+// Using extension methods - no need to specify type parameters!
+var user = await mediator.QueryAsync(new GetUserQuery { UserId = 1 });
+```
+
+**Explicit Type Parameters** (Legacy):
+```csharp
+var user = await mediator.SendQueryAsync<GetUserQuery, GetUserResponse>(query);
 ```
 
 ## 📢 Notifications (Events)
