@@ -1,6 +1,8 @@
 ﻿using Cortex.Mediator.Commands;
 using Cortex.Mediator.Notifications;
 using Cortex.Mediator.Queries;
+using Cortex.Mediator.Streaming;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -77,6 +79,32 @@ namespace Cortex.Mediator
         /// <returns>The result of the query execution.</returns>
         Task<TResult> SendQueryAsync<TResult>(
             IQuery<TResult> query,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Sends a streaming query with explicit type parameters.
+        /// Returns an asynchronous enumerable that yields results one at a time.
+        /// </summary>
+        /// <typeparam name="TQuery">The type of streaming query being sent.</typeparam>
+        /// <typeparam name="TResult">The type of each item in the result stream.</typeparam>
+        /// <param name="query">The streaming query to send.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>An asynchronous enumerable of results.</returns>
+        IAsyncEnumerable<TResult> CreateStream<TQuery, TResult>(
+            TQuery query,
+            CancellationToken cancellationToken = default)
+            where TQuery : IStreamQuery<TResult>;
+
+        /// <summary>
+        /// Sends a streaming query. The result type is inferred from the query interface.
+        /// Returns an asynchronous enumerable that yields results one at a time.
+        /// </summary>
+        /// <typeparam name="TResult">The type of each item in the result stream.</typeparam>
+        /// <param name="query">The streaming query to send.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>An asynchronous enumerable of results.</returns>
+        IAsyncEnumerable<TResult> CreateStream<TResult>(
+            IStreamQuery<TResult> query,
             CancellationToken cancellationToken = default);
 
         /// <summary>

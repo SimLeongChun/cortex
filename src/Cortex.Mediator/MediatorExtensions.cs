@@ -1,5 +1,7 @@
 using Cortex.Mediator.Commands;
 using Cortex.Mediator.Queries;
+using Cortex.Mediator.Streaming;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -78,6 +80,32 @@ namespace Cortex.Mediator
             CancellationToken cancellationToken = default)
         {
             return mediator.SendQueryAsync(query, cancellationToken);
+        }
+
+        /// <summary>
+        /// Creates a stream from a streaming query. The result type is inferred from the query.
+        /// Returns an asynchronous enumerable that yields results one at a time.
+        /// </summary>
+        /// <typeparam name="TResult">The type of each item in the result stream (inferred).</typeparam>
+        /// <param name="mediator">The mediator instance.</param>
+        /// <param name="query">The streaming query to send.</param>
+        /// <param name="cancellationToken">The cancellation token.</param>
+        /// <returns>An asynchronous enumerable of results.</returns>
+        /// <example>
+        /// <code>
+        /// // Stream large datasets efficiently
+        /// await foreach (var user in mediator.StreamAsync(new GetAllUsersQuery()))
+        /// {
+        ///     Console.WriteLine(user.Name);
+        /// }
+        /// </code>
+        /// </example>
+        public static IAsyncEnumerable<TResult> StreamAsync<TResult>(
+            this IMediator mediator,
+            IStreamQuery<TResult> query,
+            CancellationToken cancellationToken = default)
+        {
+            return mediator.CreateStream(query, cancellationToken);
         }
     }
 }

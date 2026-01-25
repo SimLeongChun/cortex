@@ -1,7 +1,9 @@
 using Cortex.Mediator.Commands;
 using Cortex.Mediator.Infrastructure;
 using Cortex.Mediator.Notifications;
+using Cortex.Mediator.Processors;
 using Cortex.Mediator.Queries;
+using Cortex.Mediator.Streaming;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -29,6 +31,7 @@ namespace Cortex.Mediator.DependencyInjection
             services.AddUnitOfWork();
 
             RegisterHandlers(services, handlerAssemblyMarkerTypes, options);
+            RegisterProcessors(services, handlerAssemblyMarkerTypes, options);
             RegisterPipelineBehaviors(services, options);
 
             return services;
@@ -69,6 +72,46 @@ namespace Cortex.Mediator.DependencyInjection
                     .AssignableTo(typeof(INotificationHandler<>)), options.OnlyPublicClasses)
                 .AsImplementedInterfaces()
                 .WithScopedLifetime());
+
+            // Register streaming query handlers
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IStreamQueryHandler<,>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithScopedLifetime());
+        }
+
+        private static void RegisterProcessors(
+            IServiceCollection services,
+            IEnumerable<Type> assemblyMarkerTypes,
+            MediatorOptions options)
+        {
+            var assemblies = assemblyMarkerTypes.Select(t => t.Assembly).ToArray();
+
+            // Register pre-processors
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IRequestPreProcessor<>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithTransientLifetime());
+
+            // Register post-processors with response
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IRequestPostProcessor<,>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithTransientLifetime());
+
+            // Register post-processors without response (for void commands)
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IRequestPostProcessor<>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithTransientLifetime());
         }
 
         private static void RegisterPipelineBehaviors(IServiceCollection services, MediatorOptions options)
@@ -89,6 +132,33 @@ namespace Cortex.Mediator.DependencyInjection
             foreach (var behaviorType in options.QueryBehaviors)
             {
                 services.AddTransient(typeof(IQueryPipelineBehavior<,>), behaviorType);
+            }
+
+            // Notification behaviors
+            foreach (var behaviorType in options.NotificationBehaviors)
+            {
+                if (behaviorType.IsGenericTypeDefinition)
+                {
+                    // Open generic behavior - register against open generic interface
+                    services.AddTransient(typeof(INotificationPipelineBehavior<>), behaviorType);
+                }
+                else
+                {
+                    // Closed behavior - find and register against specific implemented interfaces
+                    var implementedInterfaces = behaviorType.GetInterfaces()
+                        .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(INotificationPipelineBehavior<>));
+
+                    foreach (var iface in implementedInterfaces)
+                    {
+                        services.AddTransient(iface, behaviorType);
+                    }
+                }
+            }
+
+            // Stream query behaviors
+            foreach (var behaviorType in options.StreamQueryBehaviors)
+            {
+                services.AddTransient(typeof(IStreamQueryPipelineBehavior<,>), behaviorType);
             }
         }
 
