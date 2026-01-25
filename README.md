@@ -129,6 +129,9 @@
 - **Cortex.Vectors:** is a High‑performance vector types—Dense, Sparse, and Bit—for AI.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Vectors?label=Cortex.Vectors)](https://www.nuget.org/packages/Cortex.Vectors)
 
+- **Cortex.Serialization.Yaml:** is a High‑performance data serializer for Yaml
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.Vectors?label=Cortex.Serialization.Yaml)](https://www.nuget.org/packages/Cortex.Serialization.Yaml)
+
 
 ## Getting Started
 
