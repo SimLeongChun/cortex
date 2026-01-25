@@ -3,7 +3,9 @@ using Cortex.Mediator.Notifications;
 using Cortex.Mediator.Queries;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Concurrent;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,6 +17,11 @@ namespace Cortex.Mediator
     public class Mediator : IMediator
     {
         private readonly IServiceProvider _serviceProvider;
+
+        // Cache for reflection-based method lookups to improve performance
+        private static readonly ConcurrentDictionary<Type, MethodInfo> _sendCommandMethodCache = new();
+        private static readonly ConcurrentDictionary<Type, MethodInfo> _sendQueryMethodCache = new();
+        private static readonly ConcurrentDictionary<Type, MethodInfo> _sendVoidCommandMethodCache = new();
 
         public Mediator(IServiceProvider serviceProvider)
         {
@@ -34,6 +41,28 @@ namespace Cortex.Mediator
             return await handler.Handle(command, cancellationToken);
         }
 
+        public Task<TResult> SendCommandAsync<TResult>(ICommand<TResult> command, CancellationToken cancellationToken = default)
+        {
+            if (command == null)
+                throw new ArgumentNullException(nameof(command));
+
+            var commandType = command.GetType();
+            var resultType = typeof(TResult);
+
+            var method = _sendCommandMethodCache.GetOrAdd(commandType, type =>
+            {
+                var genericMethod = typeof(Mediator)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .First(m => m.Name == nameof(SendCommandAsync) &&
+                                m.IsGenericMethodDefinition &&
+                                m.GetGenericArguments().Length == 2);
+
+                return genericMethod.MakeGenericMethod(type, resultType);
+            });
+
+            return (Task<TResult>)method.Invoke(this, new object[] { command, cancellationToken })!;
+        }
+
         public async Task SendCommandAsync<TCommand>(TCommand command, CancellationToken cancellationToken = default) where TCommand : ICommand
         {
             var handler = _serviceProvider.GetRequiredService<ICommandHandler<TCommand>>();
@@ -44,6 +73,29 @@ namespace Cortex.Mediator
             }
 
             await handler.Handle(command, cancellationToken);
+        }
+
+        public Task SendCommandAsync(ICommand command, CancellationToken cancellationToken = default)
+        {
+            if (command == null)
+                throw new ArgumentNullException(nameof(command));
+
+            var commandType = command.GetType();
+
+            var method = _sendVoidCommandMethodCache.GetOrAdd(commandType, type =>
+            {
+                var genericMethod = typeof(Mediator)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .First(m => m.Name == nameof(SendCommandAsync) &&
+                                m.IsGenericMethodDefinition &&
+                                m.GetGenericArguments().Length == 1 &&
+                                m.GetParameters().Length == 2 &&
+                                m.GetParameters()[0].ParameterType.IsGenericParameter);
+
+                return genericMethod.MakeGenericMethod(type);
+            });
+
+            return (Task)method.Invoke(this, new object[] { command, cancellationToken })!;
         }
 
         public async Task<TResult> SendQueryAsync<TQuery, TResult>(TQuery query, CancellationToken cancellationToken = default)
@@ -57,6 +109,28 @@ namespace Cortex.Mediator
             }
 
             return await handler.Handle(query, cancellationToken);
+        }
+
+        public Task<TResult> SendQueryAsync<TResult>(IQuery<TResult> query, CancellationToken cancellationToken = default)
+        {
+            if (query == null)
+                throw new ArgumentNullException(nameof(query));
+
+            var queryType = query.GetType();
+            var resultType = typeof(TResult);
+
+            var method = _sendQueryMethodCache.GetOrAdd(queryType, type =>
+            {
+                var genericMethod = typeof(Mediator)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .First(m => m.Name == nameof(SendQueryAsync) &&
+                                m.IsGenericMethodDefinition &&
+                                m.GetGenericArguments().Length == 2);
+
+                return genericMethod.MakeGenericMethod(type, resultType);
+            });
+
+            return (Task<TResult>)method.Invoke(this, new object[] { query, cancellationToken })!;
         }
 
         public async Task PublishAsync<TNotification>(
