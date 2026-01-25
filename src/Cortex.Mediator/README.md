@@ -9,7 +9,7 @@ Built as part of the [Cortex Data Framework](https://github.com/buildersoftio/co
 - ✅ Commands & Queries
 - ✅ Notifications (Events)
 - ✅ Pipeline Behaviors
-- ✅ FluentValidation  - Coming in the next release v1.8
+- ✅ FluentValidation
 - ✅ Logging
 
 ---
@@ -69,7 +69,7 @@ public class CreateUserCommandHandler : ICommandHandler<CreateUserCommand,Guid>
 }
 ```
 
-### Validator (Optional, via FluentValidation) - Coming in the next release v1.8
+### Validator (Optional, via FluentValidation)
 ```csharp
 public class CreateUserValidator : AbstractValidator<CreateUserCommand>
 {
@@ -125,7 +125,7 @@ await mediator.PublishAsync(new UserCreatedNotification { UserName = "Andy" });
 ## 🔧 Pipeline Behaviors (Built-in)
 Out of the box, Cortex.Mediator supports:
 
-- `ValidationCommandBehavior`  - Coming in the next release v1.8
+- `ValidationCommandBehavior`
 - `LoggingCommandBehavior`
 
 You can also register custom behaviors:
