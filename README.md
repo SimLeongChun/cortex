@@ -47,6 +47,9 @@
 - **Cortex.Streams:** Core streaming capabilities for building data pipelines.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Streams?label=Cortex.Streams)](https://www.nuget.org/packages/Cortex.Streams)
 
+- **Cortex.Streams.Mediator:** Integration of Cortex Streaming with Cortex Mediator
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.Streams.Mediator?label=Cortex.Streams.Mediator)](https://www.nuget.org/packages/Cortex.Streams.Mediator)
+
 - **Cortex.Streams.Kafka:** Integration with Apache Kafka for robust data streaming.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Streams.Kafka?label=Cortex.Streams.Kafka)](https://www.nuget.org/packages/Cortex.Streams.Kafka)
 

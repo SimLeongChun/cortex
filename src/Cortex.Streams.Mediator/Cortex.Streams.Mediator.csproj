@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFrameworks>net10.0;net9.0;net8.0;net7.0</TargetFrameworks>
+
+		<AssemblyVersion>3.0.0</AssemblyVersion>
+		<FileVersion>3.0.0</FileVersion>
+		<Product>Buildersoft Cortex Framework</Product>
+		<Company>Buildersoft</Company>
+		<Authors>Buildersoft,EnesHoxha</Authors>
+		<Copyright>Copyright © Buildersoft 2025</Copyright>
+
+		<Description>Integration library that bridges Cortex.Streams with Cortex.Mediator, enabling seamless CQRS pattern integration with stream processing pipelines.</Description>
+
+
+		<RepositoryUrl>https://github.com/buildersoftio/cortex</RepositoryUrl>
+		<PackageTags>stream;processing;mediator;cqrs;events;commands;queries;notifications;pipeline</PackageTags>
+
+		<Version>3.0.0</Version>
+		<PackageLicenseFile>license.md</PackageLicenseFile>
+		<PackageIcon>cortex.png</PackageIcon>
+		<PackageId>Cortex.Streams.Mediator</PackageId>
+		<GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+		<IsPublishable>True</IsPublishable>
+		<PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+		<RepositoryType>git</RepositoryType>
+		<PackageReleaseNotes>Just as the Cortex in our brains handles complex processing efficiently, Cortex Data Framework brings brainpower to your data management!</PackageReleaseNotes>
+		<PackageProjectUrl>https://cortex.buildersoft.io/</PackageProjectUrl>
+		<Title>Cortex Data Framework</Title>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Cortex.Streams\Cortex.Streams.csproj" />
+		<ProjectReference Include="..\Cortex.Mediator\Cortex.Mediator.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="Assets\cortex.png">
+			<Pack>True</Pack>
+			<PackagePath></PackagePath>
+		</None>
+		<None Include="Assets\license.md">
+			<Pack>True</Pack>
+			<PackagePath></PackagePath>
+		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Folder Include="Assets\" />
+	</ItemGroup>
+
+
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+	</ItemGroup>
+
+</Project>
