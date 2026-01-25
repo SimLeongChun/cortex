@@ -138,8 +138,26 @@ namespace Cortex.Mediator
             CancellationToken cancellationToken = default)
             where TNotification : INotification
         {
-            var handlers = _serviceProvider.GetServices<INotificationHandler<TNotification>>();
-            var tasks = handlers.Select(h => h.Handle(notification, cancellationToken));
+            var handlers = _serviceProvider.GetServices<INotificationHandler<TNotification>>().ToList();
+            var behaviors = _serviceProvider.GetServices<INotificationPipelineBehavior<TNotification>>().Reverse().ToList();
+
+            // Execute all handlers, each wrapped by the pipeline behaviors
+            var tasks = handlers.Select(handler =>
+            {
+                // Build the pipeline for this specific handler
+                NotificationHandlerDelegate handlerDelegate = () => handler.Handle(notification, cancellationToken);
+
+                // Wrap the handler with all behaviors (in reverse order so first registered executes first)
+                foreach (var behavior in behaviors)
+                {
+                    var currentDelegate = handlerDelegate;
+                    var currentBehavior = behavior;
+                    handlerDelegate = () => currentBehavior.Handle(notification, currentDelegate, cancellationToken);
+                }
+
+                return handlerDelegate();
+            });
+
             await Task.WhenAll(tasks);
         }
 

@@ -1,4 +1,5 @@
 using Cortex.Mediator.Commands;
+using Cortex.Mediator.Notifications;
 using Cortex.Mediator.Queries;
 using System;
 using System.Collections.Generic;
@@ -11,6 +12,7 @@ namespace Cortex.Mediator.DependencyInjection
         internal List<Type> CommandBehaviors { get; } = new();
         internal List<Type> VoidCommandBehaviors { get; } = new();
         internal List<Type> QueryBehaviors { get; } = new();
+        internal List<Type> NotificationBehaviors { get; } = new();
 
         public bool OnlyPublicClasses { get; set; } = true;
 
@@ -91,6 +93,51 @@ namespace Cortex.Mediator.DependencyInjection
             }
 
             QueryBehaviors.Add(openGenericBehaviorType);
+            return this;
+        }
+
+        /// <summary>
+        /// Register a *closed* notification pipeline behavior.
+        /// </summary>
+        public MediatorOptions AddNotificationPipelineBehavior<TBehavior>()
+            where TBehavior : class
+        {
+            var behaviorType = typeof(TBehavior);
+
+            if (behaviorType.IsGenericTypeDefinition)
+                throw new ArgumentException("Open generic types must be registered using AddOpenNotificationPipelineBehavior");
+
+            var implementsNotificationBehavior =
+                behaviorType.GetInterfaces().Any(i => i.IsGenericType &&
+                                                      i.GetGenericTypeDefinition() == typeof(INotificationPipelineBehavior<>));
+
+            if (!implementsNotificationBehavior)
+                throw new ArgumentException("Type must implement INotificationPipelineBehavior<>");
+
+            NotificationBehaviors.Add(behaviorType);
+            return this;
+        }
+
+        /// <summary>
+        /// Register an *open generic* notification pipeline behavior, e.g. typeof(LoggingNotificationBehavior&lt;&gt;).
+        /// </summary>
+        public MediatorOptions AddOpenNotificationPipelineBehavior(Type openGenericBehaviorType)
+        {
+            if (!openGenericBehaviorType.IsGenericTypeDefinition)
+            {
+                throw new ArgumentException("Type must be an open generic type definition");
+            }
+
+            var notificationBehaviorInterface = openGenericBehaviorType.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType &&
+                                   i.GetGenericTypeDefinition() == typeof(INotificationPipelineBehavior<>));
+
+            if (notificationBehaviorInterface == null)
+            {
+                throw new ArgumentException("Type must implement INotificationPipelineBehavior<>");
+            }
+
+            NotificationBehaviors.Add(openGenericBehaviorType);
             return this;
         }
     }
