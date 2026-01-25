@@ -1,6 +1,7 @@
 using Cortex.Mediator.Commands;
 using Cortex.Mediator.Notifications;
 using Cortex.Mediator.Queries;
+using Cortex.Mediator.Streaming;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,6 +14,7 @@ namespace Cortex.Mediator.DependencyInjection
         internal List<Type> VoidCommandBehaviors { get; } = new();
         internal List<Type> QueryBehaviors { get; } = new();
         internal List<Type> NotificationBehaviors { get; } = new();
+        internal List<Type> StreamQueryBehaviors { get; } = new();
 
         public bool OnlyPublicClasses { get; set; } = true;
 
@@ -138,6 +140,29 @@ namespace Cortex.Mediator.DependencyInjection
             }
 
             NotificationBehaviors.Add(openGenericBehaviorType);
+            return this;
+        }
+
+        /// <summary>
+        /// Register an *open generic* streaming query pipeline behavior, e.g. typeof(LoggingStreamQueryBehavior&lt;,&gt;).
+        /// </summary>
+        public MediatorOptions AddOpenStreamQueryPipelineBehavior(Type openGenericBehaviorType)
+        {
+            if (!openGenericBehaviorType.IsGenericTypeDefinition)
+            {
+                throw new ArgumentException("Type must be an open generic type definition");
+            }
+
+            var streamBehaviorInterface = openGenericBehaviorType.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType &&
+                                   i.GetGenericTypeDefinition() == typeof(IStreamQueryPipelineBehavior<,>));
+
+            if (streamBehaviorInterface == null)
+            {
+                throw new ArgumentException("Type must implement IStreamQueryPipelineBehavior<,>");
+            }
+
+            StreamQueryBehaviors.Add(openGenericBehaviorType);
             return this;
         }
     }

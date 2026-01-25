@@ -2,6 +2,7 @@ using Cortex.Mediator.Commands;
 using Cortex.Mediator.Infrastructure;
 using Cortex.Mediator.Notifications;
 using Cortex.Mediator.Queries;
+using Cortex.Mediator.Streaming;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
@@ -69,6 +70,14 @@ namespace Cortex.Mediator.DependencyInjection
                     .AssignableTo(typeof(INotificationHandler<>)), options.OnlyPublicClasses)
                 .AsImplementedInterfaces()
                 .WithScopedLifetime());
+
+            // Register streaming query handlers
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IStreamQueryHandler<,>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithScopedLifetime());
         }
 
         private static void RegisterPipelineBehaviors(IServiceCollection services, MediatorOptions options)
@@ -110,6 +119,12 @@ namespace Cortex.Mediator.DependencyInjection
                         services.AddTransient(iface, behaviorType);
                     }
                 }
+            }
+
+            // Stream query behaviors
+            foreach (var behaviorType in options.StreamQueryBehaviors)
+            {
+                services.AddTransient(typeof(IStreamQueryPipelineBehavior<,>), behaviorType);
             }
         }
 

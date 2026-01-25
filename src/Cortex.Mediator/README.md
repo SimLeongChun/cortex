@@ -336,6 +336,111 @@ public class MyCacheKeyGenerator : ICacheKeyGenerator
 services.AddMediatorCaching<MyCacheKeyGenerator>();
 ```
 
+## 🌊 Streaming Requests (IAsyncEnumerable)
+Cortex.Mediator supports streaming queries that return `IAsyncEnumerable<T>`, perfect for handling large datasets efficiently without loading everything into memory.
+
+### Defining a Streaming Query
+```csharp
+// Define the streaming query
+public class GetAllUsersQuery : IStreamQuery<UserDto>
+{
+    public int PageSize { get; set; } = 100;
+}
+
+// Implement the streaming handler
+public class GetAllUsersQueryHandler : IStreamQueryHandler<GetAllUsersQuery, UserDto>
+{
+    private readonly IDbConnection _db;
+
+    public GetAllUsersQueryHandler(IDbConnection db)
+    {
+        _db = db;
+    }
+
+    public async IAsyncEnumerable<UserDto> Handle(
+        GetAllUsersQuery query,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        // Stream results from database one at a time
+        await foreach (var user in _db.StreamUsersAsync(query.PageSize, cancellationToken))
+        {
+            yield return new UserDto
+            {
+                Id = user.Id,
+                Name = user.Name,
+                Email = user.Email
+            };
+        }
+    }
+}
+```
+
+### Consuming Streaming Queries
+```csharp
+// Using the StreamAsync extension method (recommended)
+await foreach (var user in mediator.StreamAsync(new GetAllUsersQuery()))
+{
+    Console.WriteLine($"Processing: {user.Name}");
+    // Process each user as it arrives - no need to wait for all results
+}
+
+// Or with explicit type parameters
+await foreach (var user in mediator.CreateStream<GetAllUsersQuery, UserDto>(query))
+{
+    Console.WriteLine(user.Name);
+}
+```
+
+### Streaming with Cancellation
+```csharp
+var cts = new CancellationTokenSource();
+
+await foreach (var item in mediator.StreamAsync(query, cts.Token))
+{
+    if (ShouldStop(item))
+    {
+        cts.Cancel(); // Gracefully stop streaming
+        break;
+    }
+    Process(item);
+}
+```
+
+### Streaming Pipeline Behaviors
+Register pipeline behaviors for streaming queries:
+```csharp
+// Create a custom streaming behavior
+public class MetricsStreamBehavior<TQuery, TResult> : IStreamQueryPipelineBehavior<TQuery, TResult>
+    where TQuery : IStreamQuery<TResult>
+{
+    public async IAsyncEnumerable<TResult> Handle(
+        TQuery query,
+        StreamQueryHandlerDelegate<TResult> next,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var count = 0;
+        await foreach (var item in next().WithCancellation(cancellationToken))
+        {
+            count++;
+            yield return item;
+        }
+        Console.WriteLine($"Streamed {count} items");
+    }
+}
+
+// Register the behavior
+services.AddCortexMediator(
+    new[] { typeof(Program) },
+    options => options.AddOpenStreamQueryPipelineBehavior(typeof(MetricsStreamBehavior<,>))
+);
+```
+
+### Built-in Logging Behavior for Streams
+```csharp
+// Use the built-in logging behavior
+options.AddOpenStreamQueryPipelineBehavior(typeof(LoggingStreamQueryBehavior<,>));
+```
+
 ## 💬 Contributing
 We welcome contributions from the community! Whether it's reporting bugs, suggesting features, or submitting pull requests, your involvement helps improve Cortex for everyone.
 

@@ -1,11 +1,14 @@
 ﻿using Cortex.Mediator.Commands;
 using Cortex.Mediator.Notifications;
 using Cortex.Mediator.Queries;
+using Cortex.Mediator.Streaming;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -22,6 +25,7 @@ namespace Cortex.Mediator
         private static readonly ConcurrentDictionary<Type, MethodInfo> _sendCommandMethodCache = new();
         private static readonly ConcurrentDictionary<Type, MethodInfo> _sendQueryMethodCache = new();
         private static readonly ConcurrentDictionary<Type, MethodInfo> _sendVoidCommandMethodCache = new();
+        private static readonly ConcurrentDictionary<Type, MethodInfo> _createStreamMethodCache = new();
 
         public Mediator(IServiceProvider serviceProvider)
         {
@@ -159,6 +163,54 @@ namespace Cortex.Mediator
             });
 
             await Task.WhenAll(tasks);
+        }
+
+        public IAsyncEnumerable<TResult> CreateStream<TQuery, TResult>(
+            TQuery query,
+            CancellationToken cancellationToken = default)
+            where TQuery : IStreamQuery<TResult>
+        {
+            if (query == null)
+                throw new ArgumentNullException(nameof(query));
+
+            var handler = _serviceProvider.GetRequiredService<IStreamQueryHandler<TQuery, TResult>>();
+            var behaviors = _serviceProvider.GetServices<IStreamQueryPipelineBehavior<TQuery, TResult>>().Reverse().ToList();
+
+            // Build the pipeline
+            StreamQueryHandlerDelegate<TResult> handlerDelegate = () => handler.Handle(query, cancellationToken);
+
+            foreach (var behavior in behaviors)
+            {
+                var currentDelegate = handlerDelegate;
+                var currentBehavior = behavior;
+                handlerDelegate = () => currentBehavior.Handle(query, currentDelegate, cancellationToken);
+            }
+
+            return handlerDelegate();
+        }
+
+        public IAsyncEnumerable<TResult> CreateStream<TResult>(
+            IStreamQuery<TResult> query,
+            CancellationToken cancellationToken = default)
+        {
+            if (query == null)
+                throw new ArgumentNullException(nameof(query));
+
+            var queryType = query.GetType();
+            var resultType = typeof(TResult);
+
+            var method = _createStreamMethodCache.GetOrAdd(queryType, type =>
+            {
+                var genericMethod = typeof(Mediator)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                    .First(m => m.Name == nameof(CreateStream) &&
+                                m.IsGenericMethodDefinition &&
+                                m.GetGenericArguments().Length == 2);
+
+                return genericMethod.MakeGenericMethod(type, resultType);
+            });
+
+            return (IAsyncEnumerable<TResult>)method.Invoke(this, new object[] { query, cancellationToken })!;
         }
 
     
