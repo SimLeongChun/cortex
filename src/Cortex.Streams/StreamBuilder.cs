@@ -589,6 +589,140 @@ namespace Cortex.Streams
             return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider, _executionOptions);
         }
 
+        /// <summary>
+        /// Applies an advanced tumbling window with custom triggers and state modes.
+        /// </summary>
+        /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+        /// <param name="keySelector">A function to extract the key from each input item.</param>
+        /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+        /// <param name="windowSize">The size of each tumbling window.</param>
+        /// <param name="config">The window configuration with trigger and state mode settings.</param>
+        /// <param name="stateStoreName">Optional name for the state store.</param>
+        /// <param name="stateStore">Optional state store to use for storing window data.</param>
+        /// <returns>A stream builder emitting window results.</returns>
+        public IStreamBuilder<TIn, WindowResult<string, TCurrent>> AdvancedTumblingWindow<TKey>(
+            Func<TCurrent, TKey> keySelector,
+            Func<TCurrent, DateTime> timestampSelector,
+            TimeSpan windowSize,
+            WindowConfiguration<TCurrent> config,
+            string stateStoreName = null,
+            IDataStore<string, List<TCurrent>> stateStore = null)
+        {
+            if (stateStore == null)
+            {
+                if (string.IsNullOrEmpty(stateStoreName))
+                {
+                    stateStoreName = $"AdvancedTumblingWindowStateStore_{Guid.NewGuid()}";
+                }
+                stateStore = new InMemoryStateStore<string, List<TCurrent>>(stateStoreName);
+            }
+
+            var windowOperator = new AdvancedTumblingWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, windowSize, stateStore, config);
+
+            if (_firstOperator == null)
+            {
+                _firstOperator = windowOperator;
+                _lastOperator = windowOperator;
+            }
+            else
+            {
+                _lastOperator.SetNext(windowOperator);
+                _lastOperator = windowOperator;
+            }
+
+            return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider, _executionOptions);
+        }
+
+        /// <summary>
+        /// Applies an advanced sliding window with custom triggers and state modes.
+        /// </summary>
+        /// <typeparam name="TKey">The type of the key used to partition windows.</typeparam>
+        /// <param name="keySelector">A function to extract the key from each input item.</param>
+        /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+        /// <param name="windowSize">The size of each sliding window.</param>
+        /// <param name="slideInterval">The interval at which the window slides.</param>
+        /// <param name="config">The window configuration with trigger and state mode settings.</param>
+        /// <param name="stateStoreName">Optional name for the state store.</param>
+        /// <param name="stateStore">Optional state store to use for storing window data.</param>
+        /// <returns>A stream builder emitting window results.</returns>
+        public IStreamBuilder<TIn, WindowResult<string, TCurrent>> AdvancedSlidingWindow<TKey>(
+            Func<TCurrent, TKey> keySelector,
+            Func<TCurrent, DateTime> timestampSelector,
+            TimeSpan windowSize,
+            TimeSpan slideInterval,
+            WindowConfiguration<TCurrent> config,
+            string stateStoreName = null,
+            IDataStore<string, List<TCurrent>> stateStore = null)
+        {
+            if (stateStore == null)
+            {
+                if (string.IsNullOrEmpty(stateStoreName))
+                {
+                    stateStoreName = $"AdvancedSlidingWindowStateStore_{Guid.NewGuid()}";
+                }
+                stateStore = new InMemoryStateStore<string, List<TCurrent>>(stateStoreName);
+            }
+
+            var windowOperator = new AdvancedSlidingWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, windowSize, slideInterval, stateStore, config);
+
+            if (_firstOperator == null)
+            {
+                _firstOperator = windowOperator;
+                _lastOperator = windowOperator;
+            }
+            else
+            {
+                _lastOperator.SetNext(windowOperator);
+                _lastOperator = windowOperator;
+            }
+
+            return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider, _executionOptions);
+        }
+
+        /// <summary>
+        /// Applies an advanced session window with custom triggers and state modes.
+        /// </summary>
+        /// <typeparam name="TKey">The type of the key used to partition sessions.</typeparam>
+        /// <param name="keySelector">A function to extract the key from each input item.</param>
+        /// <param name="timestampSelector">A function to extract the timestamp from each input item.</param>
+        /// <param name="inactivityGap">The duration of inactivity after which a session is closed.</param>
+        /// <param name="config">The window configuration with trigger and state mode settings.</param>
+        /// <param name="stateStoreName">Optional name for the state store.</param>
+        /// <param name="stateStore">Optional state store to use for storing session data.</param>
+        /// <returns>A stream builder emitting window results.</returns>
+        public IStreamBuilder<TIn, WindowResult<string, TCurrent>> AdvancedSessionWindow<TKey>(
+            Func<TCurrent, TKey> keySelector,
+            Func<TCurrent, DateTime> timestampSelector,
+            TimeSpan inactivityGap,
+            WindowConfiguration<TCurrent> config,
+            string stateStoreName = null,
+            IDataStore<string, AdvancedSessionState<TCurrent>> stateStore = null)
+        {
+            if (stateStore == null)
+            {
+                if (string.IsNullOrEmpty(stateStoreName))
+                {
+                    stateStoreName = $"AdvancedSessionWindowStateStore_{Guid.NewGuid()}";
+                }
+                stateStore = new InMemoryStateStore<string, AdvancedSessionState<TCurrent>>(stateStoreName);
+            }
+
+            var windowOperator = new AdvancedSessionWindowOperator<TCurrent, TKey>(keySelector, timestampSelector, inactivityGap, stateStore, config);
+
+            if (_firstOperator == null)
+            {
+                _firstOperator = windowOperator;
+                _lastOperator = windowOperator;
+            }
+            else
+            {
+                _lastOperator.SetNext(windowOperator);
+                _lastOperator = windowOperator;
+            }
+
+            return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider, _executionOptions);
+        }
+
         public IInitialStreamBuilder<TIn, TCurrent> WithErrorHandling(StreamExecutionOptions executionOptions)
         {
             _executionOptions = executionOptions ?? StreamExecutionOptions.Default;
