@@ -32,7 +32,6 @@ dotnet add package Cortex.Mediator
 In `Program.cs` or `Startup.cs`:
 ```csharp
 builder.Services.AddCortexMediator(
-    builder.Configuration,
     new[] { typeof(Program) }, // Assemblies to scan for handlers
     options => options.AddDefaultBehaviors() // Logging
 );
@@ -154,12 +153,101 @@ await mediator.PublishAsync(new UserCreatedNotification { UserName = "Andy" });
 ## 🔧 Pipeline Behaviors (Built-in)
 Out of the box, Cortex.Mediator supports:
 
-- `ValidationCommandBehavior`
-- `LoggingCommandBehavior`
+- `LoggingCommandBehavior` - Logs command execution with timing
+- `LoggingQueryBehavior` - Logs query execution with timing
+- `LoggingNotificationBehavior` - Logs notification publishing with timing
+- `ExceptionHandlingCommandBehavior` - Centralized exception handling for commands
+- `ExceptionHandlingQueryBehavior` - Centralized exception handling for queries
+- `ExceptionHandlingNotificationBehavior` - Centralized exception handling for notifications
+- `ValidationCommandBehavior` - FluentValidation support (via `Cortex.Mediator.Behaviors.FluentValidation`)
 
-You can also register custom behaviors:
+### Registering Behaviors
 ```csharp
-options.AddOpenCommandPipelineBehavior(typeof(MyCustomBehavior<>));
+// Add default logging behaviors
+options.AddDefaultBehaviors();
+
+// Add exception handling behaviors
+options.AddExceptionHandlingBehaviors();
+
+// Add both logging and exception handling
+options.AddDefaultBehaviorsWithExceptionHandling();
+
+// Custom behaviors
+options.AddOpenCommandPipelineBehavior(typeof(MyCustomBehavior<,>));
+options.AddOpenQueryPipelineBehavior(typeof(MyCustomQueryBehavior<,>));
+options.AddOpenNotificationPipelineBehavior(typeof(MyCustomNotificationBehavior<>));
+```
+
+## ⚠️ Exception Handling Behavior
+The exception handling behaviors provide centralized exception handling with optional fallback results.
+
+### Basic Setup
+```csharp
+builder.Services.AddCortexMediator(
+    new[] { typeof(Program) },
+    options => options.AddExceptionHandlingBehaviors()
+);
+```
+
+### Custom Exception Handler
+Implement `IExceptionHandler` to customize exception handling:
+```csharp
+public class MyExceptionHandler : IExceptionHandler
+{
+    private readonly ILogger<MyExceptionHandler> _logger;
+
+    public MyExceptionHandler(ILogger<MyExceptionHandler> logger)
+    {
+        _logger = logger;
+    }
+
+    public Task<bool> HandleAsync(
+        Exception exception,
+        Type requestType,
+        object request,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogError(exception, "Error processing {RequestType}", requestType.Name);
+        
+        // Return true to suppress the exception, false to rethrow
+        return Task.FromResult(false);
+    }
+}
+
+// Register in DI
+services.AddSingleton<IExceptionHandler, MyExceptionHandler>();
+```
+
+### Exception Handler with Fallback Result
+For commands and queries that return a value, implement `IExceptionHandler<TResult>`:
+```csharp
+public class FallbackExceptionHandler : IExceptionHandler<ApiResponse>
+{
+    public Task<(bool handled, ApiResponse? result)> HandleWithResultAsync(
+        Exception exception,
+        Type requestType,
+        object request,
+        CancellationToken cancellationToken)
+    {
+        var fallback = new ApiResponse 
+        { 
+            Success = false, 
+            Error = exception.Message 
+        };
+        
+        return Task.FromResult((true, fallback));
+    }
+
+    public Task<bool> HandleAsync(Exception exception, Type requestType, object request, CancellationToken cancellationToken)
+        => Task.FromResult(false);
+}
+```
+
+### Notification Exception Suppression
+For notifications, you can suppress exceptions to allow other handlers to continue:
+```csharp
+// The ExceptionHandlingNotificationBehavior has a suppressExceptions parameter
+// When true, exceptions are logged but not rethrown
 ```
 
 ## 💬 Contributing
