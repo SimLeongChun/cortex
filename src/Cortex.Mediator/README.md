@@ -250,6 +250,92 @@ For notifications, you can suppress exceptions to allow other handlers to contin
 // When true, exceptions are logged but not rethrown
 ```
 
+## 💾 Caching Behavior for Queries
+The caching behavior provides automatic caching of query results to improve performance.
+
+### Basic Setup
+```csharp
+// Add caching services
+builder.Services.AddMediatorCaching(options =>
+{
+    options.DefaultAbsoluteExpiration = TimeSpan.FromMinutes(5);
+    options.DefaultSlidingExpiration = TimeSpan.FromMinutes(1);
+    options.CacheKeyPrefix = "MyApp";
+});
+
+// Add mediator with caching behavior
+builder.Services.AddCortexMediator(
+    new[] { typeof(Program) },
+    options => options.AddCachingBehavior()
+);
+```
+
+### Using the Cacheable Attribute
+Mark your query classes with the `[Cacheable]` attribute:
+```csharp
+[Cacheable(AbsoluteExpirationSeconds = 300, SlidingExpirationSeconds = 60)]
+public class GetUserQuery : IQuery<UserDto>
+{
+    public int UserId { get; set; }
+}
+```
+
+### Using the ICacheableQuery Interface
+For more control, implement `ICacheableQuery`:
+```csharp
+public class GetProductQuery : IQuery<ProductDto>, ICacheableQuery
+{
+    public int ProductId { get; set; }
+    
+    // Custom cache key
+    public string? CacheKey => $"product-{ProductId}";
+    
+    // Custom expiration times
+    public TimeSpan? AbsoluteExpiration => TimeSpan.FromMinutes(10);
+    public TimeSpan? SlidingExpiration => TimeSpan.FromMinutes(2);
+}
+```
+
+### Cache Invalidation
+Use `ICacheInvalidator` to manually invalidate cached results:
+```csharp
+public class UpdateUserCommandHandler : ICommandHandler<UpdateUserCommand>
+{
+    private readonly ICacheInvalidator _cacheInvalidator;
+
+    public UpdateUserCommandHandler(ICacheInvalidator cacheInvalidator)
+    {
+        _cacheInvalidator = cacheInvalidator;
+    }
+
+    public async Task Handle(UpdateUserCommand command, CancellationToken cancellationToken)
+    {
+        // Update user in database...
+        
+        // Invalidate the cached query result
+        _cacheInvalidator.Invalidate<GetUserQuery, UserDto>(
+            new GetUserQuery { UserId = command.UserId });
+    }
+}
+```
+
+### Custom Cache Key Generator
+Implement `ICacheKeyGenerator` for custom key generation:
+```csharp
+public class MyCacheKeyGenerator : ICacheKeyGenerator
+{
+    public string GenerateKey<TQuery, TResult>(TQuery query) 
+        where TQuery : IQuery<TResult>
+    {
+        // Custom key generation logic
+        return $"MyApp:{typeof(TQuery).Name}:{query.GetHashCode()}";
+    }
+}
+
+// Register custom generator
+services.AddMediatorCaching<MyCacheKeyGenerator>();
+```
+
 ## 💬 Contributing
 We welcome contributions from the community! Whether it's reporting bugs, suggesting features, or submitting pull requests, your involvement helps improve Cortex for everyone.
 

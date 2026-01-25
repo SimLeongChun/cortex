@@ -31,6 +31,16 @@ namespace Cortex.Mediator.DependencyInjection
         }
 
         /// <summary>
+        /// Adds caching behavior for queries.
+        /// Queries must implement ICacheableQuery or be decorated with [Cacheable] attribute.
+        /// </summary>
+        public static MediatorOptions AddCachingBehavior(this MediatorOptions options)
+        {
+            return options
+                .AddOpenQueryPipelineBehavior(typeof(CachingQueryBehavior<,>));
+        }
+
+        /// <summary>
         /// Adds both logging and exception handling behaviors.
         /// Exception handling behaviors are registered first so they wrap the logging behaviors.
         /// </summary>
@@ -38,6 +48,17 @@ namespace Cortex.Mediator.DependencyInjection
         {
             return options
                 .AddExceptionHandlingBehaviors()
+                .AddDefaultBehaviors();
+        }
+
+        /// <summary>
+        /// Adds all default behaviors including logging, exception handling, and caching.
+        /// </summary>
+        public static MediatorOptions AddAllBehaviors(this MediatorOptions options)
+        {
+            return options
+                .AddExceptionHandlingBehaviors()
+                .AddCachingBehavior()
                 .AddDefaultBehaviors();
         }
     }
