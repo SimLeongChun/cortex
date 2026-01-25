@@ -441,6 +441,100 @@ services.AddCortexMediator(
 options.AddOpenStreamQueryPipelineBehavior(typeof(LoggingStreamQueryBehavior<,>));
 ```
 
+## 🔄 Request Pre/Post Processors
+Pre-processors run before the handler executes, and post-processors run after. They're simpler than pipeline behaviors and are ideal for cross-cutting concerns.
+
+### Basic Setup
+```csharp
+// Register processor behaviors
+services.AddCortexMediator(
+    new[] { typeof(Program) },
+    options => options.AddProcessorBehaviors()
+);
+```
+
+### Creating a Pre-Processor
+Pre-processors run before the handler and can be used for validation, authorization, or data enrichment:
+```csharp
+public class LoggingPreProcessor<TRequest> : IRequestPreProcessor<TRequest>
+{
+    private readonly ILogger<LoggingPreProcessor<TRequest>> _logger;
+
+    public LoggingPreProcessor(ILogger<LoggingPreProcessor<TRequest>> logger)
+    {
+        _logger = logger;
+    }
+
+    public Task ProcessAsync(TRequest request, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Processing {RequestType}", typeof(TRequest).Name);
+        return Task.CompletedTask;
+    }
+}
+
+// Register for a specific request type
+services.AddTransient<IRequestPreProcessor<CreateOrderCommand>, OrderValidationPreProcessor>();
+
+// Or register for all requests (generic)
+services.AddTransient(typeof(IRequestPreProcessor<>), typeof(LoggingPreProcessor<>));
+```
+
+### Creating a Post-Processor
+Post-processors run after successful handler execution. Use them for logging, auditing, or triggering side effects:
+```csharp
+// Post-processor for commands/queries that return a result
+public class AuditPostProcessor<TRequest, TResponse> : IRequestPostProcessor<TRequest, TResponse>
+{
+    private readonly IAuditService _auditService;
+
+    public AuditPostProcessor(IAuditService auditService)
+    {
+        _auditService = auditService;
+    }
+
+    public async Task ProcessAsync(TRequest request, TResponse response, CancellationToken cancellationToken)
+    {
+        await _auditService.LogAsync(new AuditEntry
+        {
+            RequestType = typeof(TRequest).Name,
+            ResponseType = typeof(TResponse).Name,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+}
+
+// Post-processor for void commands
+public class NotificationPostProcessor : IRequestPostProcessor<CreateOrderCommand>
+{
+    private readonly IMediator _mediator;
+
+    public NotificationPostProcessor(IMediator mediator)
+    {
+        _mediator = mediator;
+    }
+
+    public async Task ProcessAsync(CreateOrderCommand request, CancellationToken cancellationToken)
+    {
+        // Publish a notification after the command completes
+        await _mediator.PublishAsync(new OrderCreatedNotification { /* ... */ }, cancellationToken);
+    }
+}
+```
+
+### Use Cases for Pre-Processors
+- **Validation**: Validate input before processing
+- **Authorization**: Check user permissions
+- **Data Enrichment**: Add data to the request (e.g., current user ID)
+- **Rate Limiting**: Check and enforce rate limits
+- **Logging**: Log incoming requests
+
+### Use Cases for Post-Processors
+- **Audit Logging**: Record what happened
+- **Notifications**: Send notifications after successful operations
+- **Cache Invalidation**: Clear related cached data
+- **Event Publishing**: Publish domain events
+- **Metrics**: Record performance metrics
+
 ## 💬 Contributing
 We welcome contributions from the community! Whether it's reporting bugs, suggesting features, or submitting pull requests, your involvement helps improve Cortex for everyone.
 

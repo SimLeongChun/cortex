@@ -1,6 +1,7 @@
 using Cortex.Mediator.Commands;
 using Cortex.Mediator.Infrastructure;
 using Cortex.Mediator.Notifications;
+using Cortex.Mediator.Processors;
 using Cortex.Mediator.Queries;
 using Cortex.Mediator.Streaming;
 using Microsoft.Extensions.Configuration;
@@ -30,6 +31,7 @@ namespace Cortex.Mediator.DependencyInjection
             services.AddUnitOfWork();
 
             RegisterHandlers(services, handlerAssemblyMarkerTypes, options);
+            RegisterProcessors(services, handlerAssemblyMarkerTypes, options);
             RegisterPipelineBehaviors(services, options);
 
             return services;
@@ -78,6 +80,38 @@ namespace Cortex.Mediator.DependencyInjection
                     .AssignableTo(typeof(IStreamQueryHandler<,>)), options.OnlyPublicClasses)
                 .AsImplementedInterfaces()
                 .WithScopedLifetime());
+        }
+
+        private static void RegisterProcessors(
+            IServiceCollection services,
+            IEnumerable<Type> assemblyMarkerTypes,
+            MediatorOptions options)
+        {
+            var assemblies = assemblyMarkerTypes.Select(t => t.Assembly).ToArray();
+
+            // Register pre-processors
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IRequestPreProcessor<>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithTransientLifetime());
+
+            // Register post-processors with response
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IRequestPostProcessor<,>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithTransientLifetime());
+
+            // Register post-processors without response (for void commands)
+            services.Scan(scan => scan
+                .FromAssemblies(assemblies)
+                .AddClasses(classes => classes
+                    .AssignableTo(typeof(IRequestPostProcessor<>)), options.OnlyPublicClasses)
+                .AsImplementedInterfaces()
+                .WithTransientLifetime());
         }
 
         private static void RegisterPipelineBehaviors(IServiceCollection services, MediatorOptions options)
