@@ -5,14 +5,18 @@ using System;
 
 namespace Cortex.Streams.Abstractions
 {
-    public interface IInitialStreamBuilder<TIn, TCurrent>
+    /// <summary>
+    /// Initial builder interface for creating a stream processing pipeline.
+    /// </summary>
+    /// <typeparam name="TIn">The type of the initial input to the stream.</typeparam>
+    public interface IInitialStreamBuilder<TIn>
     {
         /// <summary>
         /// Start the stream inside the application, in-app streaming
         /// </summary>
         /// <returns></returns>
         /// <exception cref="InvalidOperationException"></exception>
-        IStreamBuilder<TIn, TCurrent> Stream();
+        IStreamBuilder<TIn, TIn> Stream();
 
         /// <summary>
         /// Start configuring the Stream
@@ -20,7 +24,7 @@ namespace Cortex.Streams.Abstractions
         /// <param name="sourceOperator">Type of the Source Operator</param>
         /// <returns></returns>
         /// <exception cref="InvalidOperationException"></exception>
-        IStreamBuilder<TIn, TCurrent> Stream(ISourceOperator<TCurrent> sourceOperator);
+        IStreamBuilder<TIn, TIn> Stream(ISourceOperator<TIn> sourceOperator);
 
         /// <summary>
         /// Configure Telemetry for the Stream
@@ -28,7 +32,7 @@ namespace Cortex.Streams.Abstractions
         /// <param name="telemetryProvider">Telemetry provider like OpenTelemetryProvider</param>
         /// <returns></returns>
         /// <exception cref="InvalidOperationException"></exception>
-        IInitialStreamBuilder<TIn, TCurrent> WithTelemetry(ITelemetryProvider telemetryProvider);
+        IInitialStreamBuilder<TIn> WithTelemetry(ITelemetryProvider telemetryProvider);
 
 
         /// <summary>
@@ -36,7 +40,7 @@ namespace Cortex.Streams.Abstractions
         /// </summary>
         /// <param name="executionOptions">Execution options controlling error handling strategy and callbacks.</param>
         /// <returns>The initial builder for chaining.</returns>
-        IInitialStreamBuilder<TIn, TCurrent> WithErrorHandling(StreamExecutionOptions executionOptions);
+        IInitialStreamBuilder<TIn> WithErrorHandling(StreamExecutionOptions executionOptions);
 
     }
 }

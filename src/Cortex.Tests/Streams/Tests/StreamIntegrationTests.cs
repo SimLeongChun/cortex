@@ -8,7 +8,7 @@
             // Arrange
             string result = null;
 
-            var stream = StreamBuilder<int, int>.CreateNewStream("TestStream")
+            var stream = StreamBuilder<int>.CreateNewStream("TestStream")
                 .Stream()
                 .Filter(x => x > 5)
                 .Map(x => x * 2)
@@ -29,7 +29,7 @@
             // Arrange
             string result = null;
 
-            var stream = StreamBuilder<int, int>.CreateNewStream("TestStream")
+            var stream = StreamBuilder<int>.CreateNewStream("TestStream")
                 .Stream()
                 .Filter(x => x > 10)
                 .Sink(x => result = $"Result: {x}")

@@ -289,7 +289,7 @@ namespace Cortex.Streams.Tests
             var inactivityGap = TimeSpan.FromSeconds(2);
             var emittedResults = new List<WindowResult<string, InputData>>();
 
-            var stream = StreamBuilder<InputData, InputData>
+            var stream = StreamBuilder<InputData>
                 .CreateNewStream("Test Session Window Stream")
                 .Stream()
                 .SessionWindow<string>(

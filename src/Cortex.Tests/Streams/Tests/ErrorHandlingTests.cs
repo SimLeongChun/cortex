@@ -29,7 +29,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Skip
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("SkipStrategyTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -63,7 +63,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Skip
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("SkipFilterTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -97,7 +97,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Skip
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("SkipSinkTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -131,7 +131,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Skip
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("SkipFlatMapTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -171,7 +171,7 @@ namespace Cortex.Streams.Tests
                 RetryDelay = TimeSpan.Zero
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("RetryTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -207,7 +207,7 @@ namespace Cortex.Streams.Tests
                 RetryDelay = TimeSpan.Zero
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("RetryExceededTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -245,7 +245,7 @@ namespace Cortex.Streams.Tests
             };
 
             var attemptCount = 0;
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("RetryDelayTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -288,7 +288,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Stop
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("StopTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -321,7 +321,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Stop
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("StopGracefulTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -355,7 +355,7 @@ namespace Cortex.Streams.Tests
         public void RethrowStrategy_PropagatesOriginalException()
         {
             // Arrange - No error handling configured means Rethrow
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("RethrowTest")
                 .Stream()
                 .Map(x =>
@@ -382,7 +382,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.None
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("NoneTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -423,7 +423,7 @@ namespace Cortex.Streams.Tests
                 }
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("CustomHandlerTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -462,7 +462,7 @@ namespace Cortex.Streams.Tests
                 }
             };
 
-            var stream = StreamBuilder<string, int>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("ContextTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -506,7 +506,7 @@ namespace Cortex.Streams.Tests
             };
 
             var attemptCount = 0;
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("AttemptTrackingTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -540,7 +540,7 @@ namespace Cortex.Streams.Tests
                 OnError = ctx => ErrorHandlingDecision.Stop
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("ForceStopTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -592,7 +592,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Stop
             };
 
-            var stream = StreamBuilder<int, string>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("OperatorNameTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -634,7 +634,7 @@ namespace Cortex.Streams.Tests
                 }
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("PropagationTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -689,7 +689,7 @@ namespace Cortex.Streams.Tests
             };
 
             var processedItems = new List<string>();
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("NullInputTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -714,7 +714,7 @@ namespace Cortex.Streams.Tests
             var options1 = new StreamExecutionOptions { ErrorHandlingStrategy = ErrorHandlingStrategy.Skip };
             var options2 = new StreamExecutionOptions { ErrorHandlingStrategy = ErrorHandlingStrategy.Stop };
 
-            var stream1 = StreamBuilder<int, int>
+            var stream1 = StreamBuilder<int>
                 .CreateNewStream("Stream1")
                 .WithErrorHandling(options1)
                 .Stream()
@@ -726,7 +726,7 @@ namespace Cortex.Streams.Tests
                 .Sink(x => results1.Add(x))
                 .Build();
 
-            var stream2 = StreamBuilder<int, int>
+            var stream2 = StreamBuilder<int>
                 .CreateNewStream("Stream2")
                 .WithErrorHandling(options2)
                 .Stream()
@@ -766,7 +766,7 @@ namespace Cortex.Streams.Tests
                 MaxRetries = 0 // No retries allowed
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("ZeroRetriesTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -800,7 +800,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Stop
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("StackTraceTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -832,7 +832,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Skip
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("ComplexPipelineTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -884,7 +884,7 @@ namespace Cortex.Streams.Tests
                 ErrorHandlingStrategy = ErrorHandlingStrategy.Skip
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("AsyncEmitTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()
@@ -1045,7 +1045,7 @@ namespace Cortex.Streams.Tests
                 }
             };
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("ThreadSafetyTest")
                 .WithErrorHandling(executionOptions)
                 .Stream()

@@ -200,7 +200,7 @@ namespace Cortex.Tests.Streams.Tests
         {
             // Arrange
             var receivedData = new List<int>();
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("TestStreamWithoutTelemetry")
                 .Stream()
                 .Map(x => x * 2)
@@ -225,7 +225,7 @@ namespace Cortex.Tests.Streams.Tests
         {
             // Arrange
             var receivedData = new List<int>();
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("TestStreamNullTelemetry")
                 .WithTelemetry(null!)
                 .Stream()
@@ -254,7 +254,7 @@ namespace Cortex.Tests.Streams.Tests
             var (mockProvider, state) = CreateMockTelemetryProvider();
             int result = 0;
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("MapTelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
@@ -311,7 +311,7 @@ namespace Cortex.Tests.Streams.Tests
             var (mockProvider, state) = CreateMockTelemetryProvider();
             var receivedData = new List<int>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("FilterTelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
@@ -410,7 +410,7 @@ namespace Cortex.Tests.Streams.Tests
             var (mockProvider, state) = CreateMockTelemetryProvider();
             var receivedData = new List<int>();
 
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("FlatMapTelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
@@ -444,7 +444,7 @@ namespace Cortex.Tests.Streams.Tests
             var (mockProvider, state) = CreateMockTelemetryProvider();
             var receivedGroups = new List<KeyValuePair<string, List<int>>>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("GroupByTelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
@@ -479,7 +479,7 @@ namespace Cortex.Tests.Streams.Tests
             var (mockProvider, state) = CreateMockTelemetryProvider();
             var receivedAggregates = new List<KeyValuePair<string, int>>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("AggregateTelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
@@ -516,7 +516,7 @@ namespace Cortex.Tests.Streams.Tests
             var branch1Data = new List<int>();
             var branch2Data = new List<int>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("BranchTelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
@@ -560,7 +560,7 @@ namespace Cortex.Tests.Streams.Tests
             var (mockProvider, state) = CreateMockTelemetryProvider();
             var receivedData = new List<string>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("E2ETelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
@@ -709,7 +709,7 @@ namespace Cortex.Tests.Streams.Tests
             var (mockProvider, state) = CreateMockTelemetryProvider();
             var receivedData = new System.Collections.Concurrent.ConcurrentBag<int>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("ThreadSafeTelemetryTest")
                 .WithTelemetry(mockProvider.Object)
                 .Stream()
