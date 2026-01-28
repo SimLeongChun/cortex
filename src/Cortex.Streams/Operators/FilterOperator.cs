@@ -15,6 +15,10 @@ namespace Cortex.Streams.Operators
         private readonly Func<T, bool> _predicate;
         private IOperator _nextOperator;
 
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"FilterOperator<{typeof(T).Name}>";
+        private static readonly string TypeName = typeof(T).Name;
+
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
         private ICounter _processedCounter;
@@ -79,9 +83,7 @@ namespace Cortex.Streams.Operators
         public void Process(object input)
         {
             if (!(input is T typedInput))
-                throw new ArgumentException($"Expected input of type {typeof(T).Name}, but received {input?.GetType().Name ?? "null"}");
-
-            var operatorName = $"FilterOperator<{typeof(T).Name}>";
+                throw new ArgumentException($"Expected input of type {TypeName}, but received {input?.GetType().Name ?? "null"}");
 
             bool isPassed = false;
             bool executedSuccessfully;
@@ -95,7 +97,7 @@ namespace Cortex.Streams.Operators
                     {
                         executedSuccessfully = ErrorHandlingHelper.TryExecute<T, bool>(
                             _executionOptions,
-                            operatorName,
+                            OperatorName,
                             input,
                             _predicate,
                             typedInput,
@@ -122,7 +124,7 @@ namespace Cortex.Streams.Operators
             {
                 executedSuccessfully = ErrorHandlingHelper.TryExecute<T, bool>(
                     _executionOptions,
-                    operatorName,
+                    OperatorName,
                     input,
                     _predicate,
                     typedInput,

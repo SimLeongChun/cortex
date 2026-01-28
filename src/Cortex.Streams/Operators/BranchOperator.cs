@@ -10,6 +10,9 @@ namespace Cortex.Streams.Operators
         private readonly string _branchName;
         private readonly IOperator _branchOperator;
 
+        // Cached span name to avoid string allocation on hot path
+        private readonly string _spanName;
+
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
         private ICounter _processedCounter;
@@ -22,6 +25,7 @@ namespace Cortex.Streams.Operators
         {
             _branchName = branchName ?? throw new ArgumentNullException(nameof(branchName));
             _branchOperator = branchOperator ?? throw new ArgumentNullException(nameof(branchOperator));
+            _spanName = $"BranchOperator.Process.{branchName}";
         }
 
         public string BranchName => _branchName;
@@ -60,7 +64,7 @@ namespace Cortex.Streams.Operators
             {
                 var stopwatch = Stopwatch.StartNew();
 
-                using (var span = _tracer.StartSpan($"BranchOperator.Process.{_branchName}"))
+                using (var span = _tracer.StartSpan(_spanName))
                 {
                     try
                     {

@@ -21,6 +21,10 @@ namespace Cortex.Streams.Operators
         private readonly Func<TInput, IEnumerable<TOutput>> _flatMapFunction;
         private IOperator _nextOperator;
 
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"FlatMapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
+        private static readonly string InputTypeName = typeof(TInput).Name;
+
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
         private ICounter _processedCounter;
@@ -109,12 +113,8 @@ namespace Cortex.Streams.Operators
             catch (InvalidCastException)
             {
                 throw new ArgumentException(
-                    $"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+                    $"Expected input of type {InputTypeName}, but received {input?.GetType().Name ?? "null"}");
             }
-
-
-            var operatorName =
-                $"FlatMapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
 
             bool executedSuccessfully;
             IEnumerable<TOutput> outputs = Array.Empty<TOutput>();
@@ -128,7 +128,7 @@ namespace Cortex.Streams.Operators
                     {
                         executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, IEnumerable<TOutput>>(
                             _executionOptions,
-                            operatorName,
+                            OperatorName,
                             input,
                             current => _flatMapFunction(current) ?? Array.Empty<TOutput>(),
                             typedInput,
@@ -155,7 +155,7 @@ namespace Cortex.Streams.Operators
             {
                 executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, IEnumerable<TOutput>>(
                     _executionOptions,
-                    operatorName,
+                    OperatorName,
                     input,
                     current => _flatMapFunction(current) ?? Array.Empty<TOutput>(),
                     typedInput,

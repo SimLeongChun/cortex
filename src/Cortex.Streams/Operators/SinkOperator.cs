@@ -14,6 +14,9 @@ namespace Cortex.Streams.Operators
     {
         private readonly Action<TInput> _sinkFunction;
 
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"SinkOperator<{typeof(TInput).Name}>";
+
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
         private ICounter _processedCounter;
@@ -61,8 +64,6 @@ namespace Cortex.Streams.Operators
         {
             TInput typedInput = (TInput)input;
 
-            var operatorName = $"SinkOperator<{typeof(TInput).Name}>";
-
             if (_telemetryProvider != null)
             {
                 var stopwatch = Stopwatch.StartNew();
@@ -72,7 +73,7 @@ namespace Cortex.Streams.Operators
                     {
                         var executed = ErrorHandlingHelper.TryExecute<TInput>(
                             _executionOptions,
-                            operatorName,
+                            OperatorName,
                             input,
                             _sinkFunction);
 
@@ -96,7 +97,7 @@ namespace Cortex.Streams.Operators
             {
                 ErrorHandlingHelper.TryExecute<TInput>(
                     _executionOptions,
-                    operatorName,
+                    OperatorName,
                     input,
                     _sinkFunction);
             }
