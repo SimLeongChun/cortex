@@ -1,5 +1,6 @@
 ﻿using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Performance;
 using Cortex.Telemetry;
 using System;
 
@@ -41,6 +42,20 @@ namespace Cortex.Streams.Abstractions
         /// <param name="executionOptions">Execution options controlling error handling strategy and callbacks.</param>
         /// <returns>The initial builder for chaining.</returns>
         IInitialStreamBuilder<TIn> WithErrorHandling(StreamExecutionOptions executionOptions);
+
+        /// <summary>
+        /// Configure performance options for the stream, including buffered processing and backpressure.
+        /// This enables async processing with <see cref="IStream{TIn, TCurrent}.EmitAsync"/> and 
+        /// <see cref="IStream{TIn, TCurrent}.EmitAndForget"/> methods.
+        /// </summary>
+        /// <param name="performanceOptions">Performance options controlling buffer size, backpressure strategy, and concurrency.</param>
+        /// <returns>The initial builder for chaining.</returns>
+        /// <remarks>
+        /// When performance options with buffered processing are not configured, the stream uses 
+        /// synchronous processing for <see cref="IStream{TIn, TCurrent}.Emit"/> and simple Task.Run 
+        /// for <see cref="IStream{TIn, TCurrent}.EmitAsync"/>, maintaining backward compatibility.
+        /// </remarks>
+        IInitialStreamBuilder<TIn> WithPerformanceOptions(StreamPerformanceOptions performanceOptions);
 
     }
 }
