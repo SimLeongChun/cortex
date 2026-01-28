@@ -10,11 +10,28 @@ using System.Collections.Generic;
 namespace Cortex.Streams
 {
     /// <summary>
+    /// Entry point for creating a stream processing pipeline.
+    /// </summary>
+    /// <typeparam name="TIn">The type of the initial input to the stream.</typeparam>
+    public static class StreamBuilder<TIn>
+    {
+        /// <summary>
+        /// Creates a new stream with the specified name.
+        /// </summary>
+        /// <param name="name">The name of the stream.</param>
+        /// <returns>An initial stream builder.</returns>
+        public static IInitialStreamBuilder<TIn> CreateNewStream(string name)
+        {
+            return new StreamBuilder<TIn, TIn>(name);
+        }
+    }
+
+    /// <summary>
     /// Builds a stream processing pipeline with optional branches.
     /// </summary>
     /// <typeparam name="TIn">The type of the initial input to the stream.</typeparam>
     /// <typeparam name="TCurrent">The current type of data in the stream.</typeparam>
-    public class StreamBuilder<TIn, TCurrent> : IInitialStreamBuilder<TIn, TCurrent>, IStreamBuilder<TIn, TCurrent>
+    internal class StreamBuilder<TIn, TCurrent> : IInitialStreamBuilder<TIn>, IStreamBuilder<TIn, TCurrent>
     {
         private readonly string _name;
         private IOperator _firstOperator;
@@ -29,12 +46,12 @@ namespace Cortex.Streams
 
 
 
-        private StreamBuilder(string name)
+        internal StreamBuilder(string name)
         {
             _name = name;
         }
 
-        private StreamBuilder(string name, IOperator firstOperator, IOperator lastOperator, bool sourceAdded, ITelemetryProvider telemetryProvider = null, StreamExecutionOptions executionOptions = null)
+        internal StreamBuilder(string name, IOperator firstOperator, IOperator lastOperator, bool sourceAdded, ITelemetryProvider telemetryProvider = null, StreamExecutionOptions executionOptions = null)
         {
             _name = name;
             _firstOperator = firstOperator;
@@ -48,20 +65,10 @@ namespace Cortex.Streams
         /// Creates a new stream with the specified name.
         /// </summary>
         /// <param name="name">The name of the stream.</param>
-        /// <returns>An initial stream builder.</returns>
-        public static IInitialStreamBuilder<TIn, TIn> CreateNewStream(string name)
-        {
-            return new StreamBuilder<TIn, TIn>(name);
-        }
-
-        /// <summary>
-        /// Creates a new stream with the specified name.
-        /// </summary>
-        /// <param name="name">The name of the stream.</param>
         /// <param name="firstOperator">The first operator in the pipeline</param>
         /// <param name="lastOperator">The last operator in the pipeline</param>
         /// <returns>An initial stream builder.</returns>
-        public static IStreamBuilder<TIn, TCurrent> CreateNewStream(string name, IOperator firstOperator, IOperator lastOperator)
+        internal static IStreamBuilder<TIn, TCurrent> CreateNewStream(string name, IOperator firstOperator, IOperator lastOperator)
         {
             return new StreamBuilder<TIn, TCurrent>(name, firstOperator, lastOperator, false, null);
         }
@@ -163,14 +170,14 @@ namespace Cortex.Streams
         /// <param name="sourceOperator">Type of the Source Operator</param>
         /// <returns></returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public IStreamBuilder<TIn, TCurrent> Stream(ISourceOperator<TCurrent> sourceOperator)
+        IStreamBuilder<TIn, TIn> IInitialStreamBuilder<TIn>.Stream(ISourceOperator<TIn> sourceOperator)
         {
             if (_sourceAdded)
             {
                 throw new InvalidOperationException("Source operator already added.");
             }
 
-            var sourceAdapter = new SourceOperatorAdapter<TCurrent>(sourceOperator);
+            var sourceAdapter = new SourceOperatorAdapter<TIn>(sourceOperator);
 
             if (_firstOperator == null)
             {
@@ -183,7 +190,7 @@ namespace Cortex.Streams
             }
 
             _sourceAdded = true;
-            return this; // Returns IStreamBuilder<TIn, TCurrent>
+            return (IStreamBuilder<TIn, TIn>)(object)this;
         }
 
         /// <summary>
@@ -191,7 +198,7 @@ namespace Cortex.Streams
         /// </summary>
         /// <returns></returns>
         /// <exception cref="InvalidOperationException"></exception>
-        public IStreamBuilder<TIn, TCurrent> Stream()
+        IStreamBuilder<TIn, TIn> IInitialStreamBuilder<TIn>.Stream()
         {
             // In memory source added.
             if (_sourceAdded)
@@ -200,7 +207,7 @@ namespace Cortex.Streams
             }
 
             _sourceAdded = true;
-            return this; // Returns IStreamBuilder<TIn, TCurrent>
+            return (IStreamBuilder<TIn, TIn>)(object)this;
         }
 
 
@@ -375,7 +382,7 @@ namespace Cortex.Streams
             return new StreamBuilder<TIn, KeyValuePair<TKey, TAggregate>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider, _executionOptions);
         }
 
-        public IInitialStreamBuilder<TIn, TCurrent> WithTelemetry(ITelemetryProvider telemetryProvider)
+        IInitialStreamBuilder<TIn> IInitialStreamBuilder<TIn>.WithTelemetry(ITelemetryProvider telemetryProvider)
         {
             _telemetryProvider = telemetryProvider;
             return this;
@@ -723,7 +730,7 @@ namespace Cortex.Streams
             return new StreamBuilder<TIn, WindowResult<string, TCurrent>>(_name, _firstOperator, _lastOperator, _sourceAdded, _telemetryProvider, _executionOptions);
         }
 
-        public IInitialStreamBuilder<TIn, TCurrent> WithErrorHandling(StreamExecutionOptions executionOptions)
+        IInitialStreamBuilder<TIn> IInitialStreamBuilder<TIn>.WithErrorHandling(StreamExecutionOptions executionOptions)
         {
             _executionOptions = executionOptions ?? StreamExecutionOptions.Default;
             _executionOptions.StreamName = _name;

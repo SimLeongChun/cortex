@@ -7,7 +7,7 @@
         {
             // Arrange
             var receivedData = new List<int>();
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .Map(x => x * 2)
@@ -31,7 +31,7 @@
         public void Build_ShouldCreateStreamSuccessfully()
         {
             // Arrange
-            var builder = StreamBuilder<int, int>.CreateNewStream("TestStream")
+            var builder = StreamBuilder<int>.CreateNewStream("TestStream")
                 .Stream()
                 .Map(x => x * 2)
                 .Filter(x => x > 5);

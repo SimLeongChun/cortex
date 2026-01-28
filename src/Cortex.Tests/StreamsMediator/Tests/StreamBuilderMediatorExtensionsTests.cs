@@ -44,7 +44,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .ReturnsAsync("result");
 
             // Build a stream using the extension method
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .SinkToCommand<string, string, StreamExtensionTestCommand, string>(
@@ -80,7 +80,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .Returns(Task.CompletedTask);
 
             // Build a stream using the extension method
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .SinkToVoidCommand<string, string, StreamExtensionVoidCommand>(
@@ -115,7 +115,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .Returns(Task.CompletedTask);
 
             // Build a stream using the extension method
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .SinkToNotification<string, string, StreamExtensionNotification>(
@@ -150,7 +150,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .Returns(Task.CompletedTask);
 
             // Build a stream using the extension method - starts with notification type
-            var stream = StreamBuilder<StreamExtensionNotification, StreamExtensionNotification>
+            var stream = StreamBuilder<StreamExtensionNotification>
                 .CreateNewStream("NotificationStream")
                 .Stream()
                 .PublishNotification(mockMediator.Object)
@@ -182,7 +182,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .ReturnsAsync((StreamExtensionTestCommand cmd, CancellationToken _) => $"processed-{cmd.Input}");
 
             // Build a stream using the extension method
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .SinkToCommand<string, string, StreamExtensionTestCommand, string>(
@@ -216,7 +216,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .ThrowsAsync(new InvalidOperationException("Test error"));
 
             // Build a stream using the extension method
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .SinkToCommand<string, string, StreamExtensionTestCommand, string>(
@@ -252,7 +252,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .Returns(Task.CompletedTask);
 
             // Build a stream using the extension method
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .SinkToNotification<string, string, StreamExtensionNotification>(

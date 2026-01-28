@@ -210,7 +210,7 @@ namespace Cortex.Streams.Tests
             var slideInterval = TimeSpan.FromSeconds(1);
             var emittedResults = new List<WindowResult<string, InputData>>();
 
-            var stream = StreamBuilder<InputData, InputData>
+            var stream = StreamBuilder<InputData>
                 .CreateNewStream("Test Sliding Window Stream")
                 .Stream()
                 .SlidingWindow<string>(

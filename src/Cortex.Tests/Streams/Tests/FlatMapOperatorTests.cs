@@ -28,7 +28,7 @@ namespace Cortex.Tests.Streams.Tests
 
             // Build the stream:
             // Start a stream without a dedicated source, we will just Emit into it.
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("TestStream")
                 .Stream()
                 .FlatMap(line => line.Split(' '))   // Use FlatMap to split a sentence into words
@@ -56,7 +56,7 @@ namespace Cortex.Tests.Streams.Tests
             // Arrange
             var collectingSink = new CollectingSink<int>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("EmptyResultStream")
                 .Stream()
                 .FlatMap(num => new int[0]) // Always empty
@@ -80,7 +80,7 @@ namespace Cortex.Tests.Streams.Tests
             // Arrange
             var collectingSink = new CollectingSink<int>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("NullResultStream")
                 .Stream()
                 .FlatMap<int>(num => null) // Always null
@@ -104,7 +104,7 @@ namespace Cortex.Tests.Streams.Tests
             // Arrange
             var collectingSink = new CollectingSink<int>();
 
-            var stream = StreamBuilder<int, int>
+            var stream = StreamBuilder<int>
                 .CreateNewStream("ExceptionStream")
                 .Stream()
                 .FlatMap<int>(num => throw new InvalidOperationException("Test exception"))
@@ -126,7 +126,7 @@ namespace Cortex.Tests.Streams.Tests
             // Arrange
             var collectingSink = new CollectingSink<string>();
 
-            var stream = StreamBuilder<string, string>
+            var stream = StreamBuilder<string>
                 .CreateNewStream("SingleOutputStream")
                 .Stream()
                 .FlatMap(line => new[] { line.ToUpper() }) // One-to-one mapping but via flatmap

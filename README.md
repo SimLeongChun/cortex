@@ -181,7 +181,8 @@ Cortex Data Framework makes it easy to set up and run real-time data processing 
 ### 1. Creating a Stream
 
 ```csharp
-var stream = StreamBuilder<int, int>.CreateNewStream("ExampleStream")
+var stream = StreamBuilder<int>.CreateNewStream("ExampleStream")
+    .Stream()
     .Map(x => x * 2)
     .Filter(x => x > 10)
     .Sink(Console.WriteLine)
@@ -203,9 +204,10 @@ Console.WriteLine(stateStore.Get("key1"));
 
 ```csharp
 var telemetryProvider = new OpenTelemetryProvider();
-var stream = StreamBuilder<int, int>
+var stream = StreamBuilder<int>
     .CreateNewStream("TelemetryStream")
     .WithTelemetry(telemetryProvider)
+    .Stream()
     .Map(x => x * 2)
     .Sink(Console.WriteLine)
     .Build();
@@ -239,7 +241,7 @@ public class ClickEvent
         static void Main(string[] args)
         {
             // Build the stream
-            var stream = StreamBuilder<ClickEvent, ClickEvent>.CreateNewStream("ClickStream")
+            var stream = StreamBuilder<ClickEvent>.CreateNewStream("ClickStream")
                 .Stream()
                 .Filter(e => !string.IsNullOrEmpty(e.PageUrl))
                 .GroupBySilently(
