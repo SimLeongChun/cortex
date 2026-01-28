@@ -31,6 +31,7 @@
     <ProjectReference Include="..\Cortex.Streams.Mediator\Cortex.Streams.Mediator.csproj" />
     <ProjectReference Include="..\Cortex.Streams\Cortex.Streams.csproj" />
     <ProjectReference Include="..\Cortex.Telemetry\Cortex.Telemetry.csproj" />
+    <ProjectReference Include="..\Cortex.Types\Cortex.Types.csproj" />
   </ItemGroup>
 
   <ItemGroup>
