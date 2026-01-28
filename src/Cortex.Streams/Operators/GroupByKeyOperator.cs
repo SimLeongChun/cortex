@@ -14,6 +14,10 @@ namespace Cortex.Streams.Operators
         private readonly IDataStore<TKey, List<TInput>> _stateStore;
         private IOperator _nextOperator;
 
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"GroupByKeyOperator<{typeof(TInput).Name},{typeof(TKey).Name}>";
+        private static readonly string InputTypeName = typeof(TInput).Name;
+
         private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         // Telemetry fields
@@ -81,11 +85,8 @@ namespace Cortex.Streams.Operators
             catch (InvalidCastException)
             {
                 throw new ArgumentException(
-                    $"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+                    $"Expected input of type {InputTypeName}, but received {input?.GetType().Name ?? "null"}");
             }
-
-            var operatorName =
-                $"GroupByKeyOperator<{typeof(TInput).Name},{typeof(TKey).Name}>";
 
             bool executedSuccessfully;
             TKey key = default;
@@ -103,7 +104,7 @@ namespace Cortex.Streams.Operators
                         executedSuccessfully =
                             ErrorHandlingHelper.TryExecute<TInput, KeyValuePair<TKey, List<TInput>>>(
                                 _executionOptions,
-                                operatorName,
+                                OperatorName,
                                 input,
                                 current =>
                                 {
@@ -148,7 +149,7 @@ namespace Cortex.Streams.Operators
                 executedSuccessfully =
                     ErrorHandlingHelper.TryExecute<TInput, KeyValuePair<TKey, List<TInput>>>(
                         _executionOptions,
-                        operatorName,
+                        OperatorName,
                         input,
                         current =>
                         {

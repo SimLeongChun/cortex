@@ -4,6 +4,7 @@ using Cortex.Mediator.Queries;
 using Cortex.Mediator.Streaming;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -142,25 +143,36 @@ namespace Cortex.Mediator
             CancellationToken cancellationToken = default)
             where TNotification : INotification
         {
-            var handlers = _serviceProvider.GetServices<INotificationHandler<TNotification>>().ToList();
-            var behaviors = _serviceProvider.GetServices<INotificationPipelineBehavior<TNotification>>().Reverse().ToList();
+            var handlers = _serviceProvider.GetServices<INotificationHandler<TNotification>>();
+            var behaviors = _serviceProvider.GetServices<INotificationPipelineBehavior<TNotification>>();
 
-            // Execute all handlers, each wrapped by the pipeline behaviors
-            var tasks = handlers.Select(handler =>
+            // Materialize behaviors once since we need to iterate multiple times
+            // Use stackalloc-friendly pattern for small counts
+            var behaviorList = behaviors as INotificationPipelineBehavior<TNotification>[] ?? behaviors.ToArray();
+            Array.Reverse(behaviorList);
+
+            // Count handlers to pre-allocate task array
+            var handlerList = handlers as INotificationHandler<TNotification>[] ?? handlers.ToArray();
+            if (handlerList.Length == 0)
+                return;
+
+            var tasks = new Task[handlerList.Length];
+            for (int i = 0; i < handlerList.Length; i++)
             {
+                var handler = handlerList[i];
                 // Build the pipeline for this specific handler
                 NotificationHandlerDelegate handlerDelegate = () => handler.Handle(notification, cancellationToken);
 
-                // Wrap the handler with all behaviors (in reverse order so first registered executes first)
-                foreach (var behavior in behaviors)
+                // Wrap the handler with all behaviors (already reversed)
+                foreach (var behavior in behaviorList)
                 {
                     var currentDelegate = handlerDelegate;
                     var currentBehavior = behavior;
                     handlerDelegate = () => currentBehavior.Handle(notification, currentDelegate, cancellationToken);
                 }
 
-                return handlerDelegate();
-            });
+                tasks[i] = handlerDelegate();
+            }
 
             await Task.WhenAll(tasks);
         }
@@ -174,15 +186,17 @@ namespace Cortex.Mediator
                 throw new ArgumentNullException(nameof(query));
 
             var handler = _serviceProvider.GetRequiredService<IStreamQueryHandler<TQuery, TResult>>();
-            var behaviors = _serviceProvider.GetServices<IStreamQueryPipelineBehavior<TQuery, TResult>>().Reverse().ToList();
+            var behaviors = _serviceProvider.GetServices<IStreamQueryPipelineBehavior<TQuery, TResult>>();
 
             // Build the pipeline
             StreamQueryHandlerDelegate<TResult> handlerDelegate = () => handler.Handle(query, cancellationToken);
 
-            foreach (var behavior in behaviors)
+            // Materialize and reverse behaviors
+            var behaviorArray = behaviors as IStreamQueryPipelineBehavior<TQuery, TResult>[] ?? behaviors.ToArray();
+            for (int i = behaviorArray.Length - 1; i >= 0; i--)
             {
                 var currentDelegate = handlerDelegate;
-                var currentBehavior = behavior;
+                var currentBehavior = behaviorArray[i];
                 handlerDelegate = () => currentBehavior.Handle(query, currentDelegate, cancellationToken);
             }
 

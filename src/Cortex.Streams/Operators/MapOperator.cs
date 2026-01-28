@@ -16,6 +16,10 @@ namespace Cortex.Streams.Operators
         private readonly Func<TInput, TOutput> _mapFunction;
         private IOperator _nextOperator;
 
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"MapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
+        private static readonly string InputTypeName = typeof(TInput).Name;
+
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
         private ICounter _processedCounter;
@@ -62,9 +66,8 @@ namespace Cortex.Streams.Operators
         public void Process(object input)
         {
             if (!(input is TInput typedInput))
-                throw new ArgumentException($"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+                throw new ArgumentException($"Expected input of type {InputTypeName}, but received {input?.GetType().Name ?? "null"}");
 
-            var operatorName = $"MapOperator<{typeof(TInput).Name},{typeof(TOutput).Name}>";
             TOutput output;
             bool shouldContinue;
 
@@ -77,7 +80,7 @@ namespace Cortex.Streams.Operators
                     {
                         shouldContinue = ErrorHandlingHelper.TryExecute<TInput, TOutput>(
                             _executionOptions,
-                            operatorName,
+                            OperatorName,
                             input,
                             _mapFunction,
                             typedInput,
@@ -103,7 +106,7 @@ namespace Cortex.Streams.Operators
             {
                 shouldContinue = ErrorHandlingHelper.TryExecute<TInput, TOutput>(
                     _executionOptions,
-                    operatorName,
+                    OperatorName,
                     input,
                     _mapFunction,
                     typedInput,

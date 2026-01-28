@@ -16,6 +16,10 @@ namespace Cortex.Streams.Operators
         private readonly IDataStore<TKey, TAggregate> _stateStore;
         private IOperator _nextOperator;
 
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"AggregateOperator<{typeof(TKey).Name},{typeof(TCurrent).Name},{typeof(TAggregate).Name}>";
+        private static readonly string CurrentTypeName = typeof(TCurrent).Name;
+
         private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         // Telemetry fields
@@ -82,11 +86,8 @@ namespace Cortex.Streams.Operators
             catch (InvalidCastException)
             {
                 throw new ArgumentException(
-                    $"Expected input of type {typeof(TCurrent).Name}, but received {input?.GetType().Name ?? "null"}");
+                    $"Expected input of type {CurrentTypeName}, but received {input?.GetType().Name ?? "null"}");
             }
-
-            var operatorName =
-                $"AggregateOperator<{typeof(TKey).Name},{typeof(TCurrent).Name},{typeof(TAggregate).Name}>";
 
             bool executedSuccessfully;
             KeyValuePair<TKey, TAggregate> result = default;
@@ -101,7 +102,7 @@ namespace Cortex.Streams.Operators
                     {
                         executedSuccessfully = ErrorHandlingHelper.TryExecute<TCurrent, KeyValuePair<TKey, TAggregate>>(
                             _executionOptions,
-                            operatorName,
+                            OperatorName,
                             input,
                             current =>
                             {
@@ -145,7 +146,7 @@ namespace Cortex.Streams.Operators
             {
                 executedSuccessfully = ErrorHandlingHelper.TryExecute<TCurrent, KeyValuePair<TKey, TAggregate>>(
                     _executionOptions,
-                    operatorName,
+                    OperatorName,
                     input,
                     current =>
                     {
