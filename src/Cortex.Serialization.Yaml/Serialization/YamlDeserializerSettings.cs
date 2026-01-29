@@ -17,6 +17,7 @@ namespace Cortex.Serialization.Yaml
     /// <item><see cref="NamingConvention"/>: camelCase (common in YAML/JSON ecosystems)</item>
     /// <item><see cref="CaseInsensitive"/>: true (for robust property matching)</item>
     /// <item><see cref="IgnoreUnmatchedProperties"/>: true (for forward/backward compatibility)</item>
+    /// <item><see cref="PreserveComments"/>: false (for performance)</item>
     /// </list>
     /// </para>
     /// </remarks>
@@ -135,5 +136,52 @@ namespace Cortex.Serialization.Yaml
         /// With IgnoreUnmatchedProperties = false: YamlException is thrown for unmatched property "age"
         /// </example>
         public bool IgnoreUnmatchedProperties { get; init; } = true;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether comments should be preserved during parsing.
+        /// </summary>
+        /// <value>
+        /// <c>true</c> to preserve comments and attach them to nodes; <c>false</c> to discard comments.
+        /// Default is <c>false</c>.
+        /// </value>
+        /// <remarks>
+        /// <para>
+        /// When enabled, comments in the YAML document are preserved and can be accessed
+        /// through the parsed nodes. This is useful for round-trip scenarios where you need
+        /// to preserve comments when reading and writing YAML.
+        /// </para>
+        /// <para>
+        /// Enabling this option may have a slight performance impact.
+        /// </para>
+        /// </remarks>
+        public bool PreserveComments { get; init; } = false;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether anchors and aliases should be resolved.
+        /// </summary>
+        /// <value>
+        /// <c>true</c> to resolve anchors and aliases during parsing; <c>false</c> to keep them as references.
+        /// Default is <c>true</c>.
+        /// </value>
+        /// <remarks>
+        /// <para>
+        /// YAML anchors (&amp;name) and aliases (*name) allow you to define a value once and reference
+        /// it multiple times. When this setting is true, aliases are automatically resolved to the
+        /// anchored values during deserialization.
+        /// </para>
+        /// </remarks>
+        /// <example>
+        /// YAML with anchors and aliases:
+        /// <code>
+        /// defaults: &amp;defaults
+        ///   timeout: 30
+        ///   retries: 3
+        /// 
+        /// development:
+        ///   &lt;&lt;: *defaults
+        ///   debug: true
+        /// </code>
+        /// </example>
+        public bool ResolveAnchors { get; init; } = true;
     }
 }

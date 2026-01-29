@@ -316,12 +316,19 @@ namespace Cortex.Serialization.Yaml
         {
             var scanner = new Parser.Scanner(input);
             var tokens = scanner.Scan();
-            var parser = new Parser.Parser(tokens);
+            var parser = new Parser.Parser(tokens, _settings.PreserveComments);
             return parser.ParseDocument();
         }
 
         private object? ConvertNode(Parser.YamlNode node, Type target)
         {
+            // Handle alias nodes
+            if (node is Parser.YamlAlias alias)
+            {
+                // Alias should have been resolved during parsing if ResolveAnchors is true
+                throw new Common.YamlException($"Unresolved alias: *{alias.Name}");
+            }
+
             foreach (var c in _converters)
                 if (c.CanConvert(target))
                     return c.Read((node as Parser.YamlScalar)?.Value, target);

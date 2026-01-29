@@ -191,7 +191,11 @@ namespace Cortex.Serialization.Yaml
         public string Serialize(object? obj)
         {
             var node = ToNode(obj);
-            var emitter = new Emitter.Emitter(_settings.Indentation);
+            var emitter = new Emitter.Emitter(
+                _settings.Indentation, 
+                _settings.EmitComments,
+                _settings.PreferFlowStyle,
+                _settings.FlowStyleThreshold);
 
             return emitter.Emit(node);
         }
