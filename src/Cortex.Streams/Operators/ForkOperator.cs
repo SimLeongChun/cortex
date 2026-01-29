@@ -8,6 +8,7 @@ namespace Cortex.Streams.Operators
     internal class ForkOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled
     {
         private readonly Dictionary<string, BranchOperator<T>> _branches = new Dictionary<string, BranchOperator<T>>();
+        private IOperator _continuationOperator;
 
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
@@ -46,6 +47,12 @@ namespace Cortex.Streams.Operators
                     telemetryEnabled.SetTelemetryProvider(telemetryProvider);
                 }
             }
+
+            // Propagate telemetry to the continuation operator
+            if (_continuationOperator is ITelemetryEnabled continuationTelemetryEnabled)
+            {
+                continuationTelemetryEnabled.SetTelemetryProvider(telemetryProvider);
+            }
         }
 
         public void AddBranch(string name, BranchOperator<T> branchOperator)
@@ -79,6 +86,10 @@ namespace Cortex.Streams.Operators
                         {
                             branch.Process(input);
                         }
+
+                        // Process continuation operator after branches
+                        _continuationOperator?.Process(input);
+
                         span.SetAttribute("status", "success");
                     }
                     catch (Exception ex)
@@ -101,17 +112,34 @@ namespace Cortex.Streams.Operators
                 {
                     branch.Process(input);
                 }
+
+                // Process continuation operator after branches
+                _continuationOperator?.Process(input);
             }
         }
 
         public void SetNext(IOperator nextOperator)
         {
-            throw new InvalidOperationException("Cannot set next operator on a ForkOperator.");
+            _continuationOperator = nextOperator;
+
+            // Propagate telemetry to the new continuation operator if already configured
+            if (_telemetryProvider != null && nextOperator is ITelemetryEnabled telemetryEnabled)
+            {
+                telemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
         }
 
         public IEnumerable<IOperator> GetNextOperators()
         {
-            return _branches.Values;
+            foreach (var branch in _branches.Values)
+            {
+                yield return branch;
+            }
+
+            if (_continuationOperator != null)
+            {
+                yield return _continuationOperator;
+            }
         }
 
         public IReadOnlyDictionary<string, BranchOperator<T>> Branches => _branches;
