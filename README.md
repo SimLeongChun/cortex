@@ -114,6 +114,9 @@
 - **Cortex.States.SQLite:** Persistent state storage using SQLite.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.States.SQLite?label=Cortex.States.SQLite)](https://www.nuget.org/packages/Cortex.States.SQLite)
 
+- **Cortex.States.DuckDb:** Persistent state storage using DuckDb.
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.States.DuckDb?label=Cortex.States.DuckDb)](https://www.nuget.org/packages/Cortex.States.DuckDb)
+
 - **Cortex.Telemetry:** Core library to add support for Tracing and Matrics.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Telemetry?label=Cortex.Telemetry)](https://www.nuget.org/packages/Cortex.Telemetry)
 
