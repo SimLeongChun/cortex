@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Operators.Joins;
 using Cortex.Streams.Operators.Windows;
 using System;
 using System.Collections.Generic;
@@ -114,6 +115,51 @@ namespace Cortex.Streams.Abstractions
                     IDataStore<TKey, TRight> rightStateStore,
                     Func<TCurrent, TKey> keySelector,
                     Func<TCurrent, TRight, TResult> joinFunction);
+
+        /// <summary>
+        /// Performs a left join between the current branch stream and a state-backed table (right side) based on a shared key.
+        /// Unlike an inner join, this operation emits a result for every left element, even when no matching right element exists.
+        /// When no match is found, the join function receives <c>default(TRight)</c> for the right element.
+        /// </summary>
+        /// <typeparam name="TRight">The type of the elements stored in the right state store.</typeparam>
+        /// <typeparam name="TKey">The type of the key used for matching left stream elements to right elements.</typeparam>
+        /// <typeparam name="TResult">The type of the result produced by joining a left element with a right element.</typeparam>
+        /// <param name="rightStateStore">
+        /// The state store mapping keys of type <typeparamref name="TKey"/> to values of type <typeparamref name="TRight"/>.
+        /// </param>
+        /// <param name="keySelector">
+        /// A function that extracts the key from the left (current) stream element of type <c>TCurrent</c>.
+        /// </param>
+        /// <param name="joinFunction">
+        /// A function that combines the left element (of type <c>TCurrent</c>) and the matching right element
+        /// (or <c>default(TRight)</c> if no match) to produce a result of type <typeparamref name="TResult"/>.
+        /// </param>
+        /// <returns>
+        /// An <see cref="IBranchStreamBuilder{TIn, TResult}"/> representing the pipeline after the left join operation.
+        /// </returns>
+        /// <remarks>
+        /// Use a left join when you want to enrich stream data with optional reference data that may not always exist.
+        /// </remarks>
+        IBranchStreamBuilder<TIn, TResult> LeftJoin<TRight, TKey, TResult>(
+                    IDataStore<TKey, TRight> rightStateStore,
+                    Func<TCurrent, TKey> keySelector,
+                    Func<TCurrent, TRight, TResult> joinFunction);
+
+        /// <summary>
+        /// Performs a windowed join between the current branch stream (left) and another stream (right) based on a shared key.
+        /// Elements from both streams are buffered within the configured time window and matched when they share the same key.
+        /// </summary>
+        /// <typeparam name="TRight">The type of elements in the right stream.</typeparam>
+        /// <typeparam name="TKey">The type of the key used for matching elements from both streams.</typeparam>
+        /// <typeparam name="TResult">The type of the result produced by joining matched elements.</typeparam>
+        /// <param name="joinOperator">
+        /// The stream-stream join operator that handles windowed buffering and matching.
+        /// </param>
+        /// <returns>
+        /// An <see cref="IBranchStreamBuilder{TIn, TResult}"/> representing the pipeline after the stream-stream join.
+        /// </returns>
+        IBranchStreamBuilder<TIn, TResult> JoinStream<TRight, TKey, TResult>(
+            StreamStreamJoinOperator<TCurrent, TRight, TKey, TResult> joinOperator);
 
 
                 /// <summary>
