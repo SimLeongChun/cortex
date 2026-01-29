@@ -1,5 +1,4 @@
 using Cortex.Mediator.Commands;
-using Cortex.Mediator.Infrastructure;
 using Cortex.Mediator.Notifications;
 using Cortex.Mediator.Processors;
 using Cortex.Mediator.Queries;
@@ -27,8 +26,6 @@ namespace Cortex.Mediator.DependencyInjection
 
             // Validation has been removed for issue #118
             //services.AddValidatorsFromAssemblies(handlerAssemblyMarkerTypes.Select(t => t.Assembly));
-
-            services.AddUnitOfWork();
 
             RegisterHandlers(services, handlerAssemblyMarkerTypes, options);
             RegisterProcessors(services, handlerAssemblyMarkerTypes, options);
@@ -160,12 +157,6 @@ namespace Cortex.Mediator.DependencyInjection
             {
                 services.AddTransient(typeof(IStreamQueryPipelineBehavior<,>), behaviorType);
             }
-        }
-
-        private static void AddUnitOfWork(this IServiceCollection services)
-        {
-            services.AddScoped<IUnitOfWork>(provider =>
-                new UnitOfWork(provider.GetRequiredService<IDbConnection>()));
         }
     }
 }
