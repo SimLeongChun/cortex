@@ -275,6 +275,44 @@ namespace Cortex.Streams
             return this;
         }
 
+        /// <summary>
+        /// Creates a fan-out pattern to send data to multiple sinks simultaneously.
+        /// </summary>
+        /// <param name="config">An action to configure the fan-out sinks.</param>
+        /// <returns>A fan-out builder to configure and build the stream.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="config"/> is null.</exception>
+        /// <remarks>
+        /// FanOut provides a simpler API than AddBranch when you need to send the same data
+        /// to multiple sinks without complex per-branch transformations.
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// var stream = StreamBuilder&lt;Order&gt;.CreateNewStream("OrderProcessor")
+        ///     .Stream()
+        ///     .FanOut(fanOut => fanOut
+        ///         .To("database", order => SaveToDatabase(order))
+        ///         .To("kafka", order => PublishToKafka(order)))
+        ///     .Build();
+        /// </code>
+        /// </example>
+        public IFanOutBuilder<TIn, TCurrent> FanOut(Action<IFanOutBuilder<TIn, TCurrent>> config)
+        {
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+
+            var fanOutBuilder = new FanOutBuilder<TIn, TCurrent>(
+                _name,
+                _firstOperator,
+                _lastOperator,
+                _telemetryProvider,
+                _executionOptions,
+                _performanceOptions);
+
+            config(fanOutBuilder);
+
+            return fanOutBuilder;
+        }
+
         public IStreamBuilder<TIn, TCurrent> GroupBySilently<TKey>(Func<TCurrent, TKey> keySelector, string stateStoreName = null, States.IDataStore<TKey, List<TCurrent>> stateStore = null)
         {
             if (stateStore == null)

@@ -73,6 +73,37 @@ namespace Cortex.Streams.Abstractions
         IStreamBuilder<TIn, TCurrent> AddBranch(string name, Action<IBranchStreamBuilder<TIn, TCurrent>> config);
 
         /// <summary>
+        /// Creates a fan-out pattern to send data to multiple sinks simultaneously.
+        /// Use this when you need to send the same data to multiple destinations
+        /// without intermediate transformations between sinks.
+        /// </summary>
+        /// <param name="config">An action to configure the fan-out sinks using the builder.</param>
+        /// <returns>A fan-out builder to configure and build the stream.</returns>
+        /// <remarks>
+        /// <para>
+        /// FanOut is simpler than AddBranch when you only need multiple sinks without
+        /// per-sink transformations. For complex branching with different transformations
+        /// per branch, use <see cref="AddBranch"/> instead.
+        /// </para>
+        /// <para>
+        /// Each sink can optionally have a filter predicate to receive only matching data.
+        /// </para>
+        /// </remarks>
+        /// <example>
+        /// <code>
+        /// var stream = StreamBuilder&lt;Order&gt;.CreateNewStream("OrderProcessor")
+        ///     .Stream()
+        ///     .Map(order => EnrichOrder(order))
+        ///     .FanOut(fanOut => fanOut
+        ///         .To("database", order => SaveToDatabase(order))
+        ///         .To("kafka", order => PublishToKafka(order))
+        ///         .To("alerts", order => order.Amount > 10000, order => SendAlert(order)))
+        ///     .Build();
+        /// </code>
+        /// </example>
+        IFanOutBuilder<TIn, TCurrent> FanOut(Action<IFanOutBuilder<TIn, TCurrent>> config);
+
+        /// <summary>
         /// Builds the stream
         /// </summary>
         /// <returns></returns>
