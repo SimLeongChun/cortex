@@ -132,6 +132,9 @@
 - **Cortex.Mediator.Behaviors.FluentValidation:** implementation of the FluentValidation validation for Commands and Queries
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Mediator.Behaviors.FluentValidation?label=Cortex.Mediator.Behaviors.FluentValidation)](https://www.nuget.org/packages/Cortex.Mediator.Behaviors.FluentValidation)
 
+- **Cortex.Mediator.Behaviors.Transactional:** implementation of the Transactional Behaviors for Commands
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.Mediator.Behaviors.Transactional?label=Cortex.Mediator.Behaviors.Transactional)](https://www.nuget.org/packages/Cortex.Mediator.Behaviors.Transactional)
+
 - **Cortex.Vectors:** is a High‑performance vector types—Dense, Sparse, and Bit—for AI.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Vectors?label=Cortex.Vectors)](https://www.nuget.org/packages/Cortex.Vectors)
 
