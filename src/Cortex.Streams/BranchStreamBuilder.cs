@@ -1,6 +1,7 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Abstractions;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Operators.Joins;
 using Cortex.Streams.Operators.Windows;
 using System;
 using System.Collections.Generic;
@@ -351,6 +352,39 @@ namespace Cortex.Streams
                 keySelector,
                 joinFunction,
                 rightStateStore);
+
+            if (_firstOperator == null)
+            {
+                _firstOperator = joinOperator;
+                _lastOperator = joinOperator;
+            }
+            else
+            {
+                _lastOperator.SetNext(joinOperator);
+                _lastOperator = joinOperator;
+            }
+
+            return new BranchStreamBuilder<TIn, TResult>(_name)
+            {
+                _firstOperator = _firstOperator,
+                _lastOperator = _lastOperator,
+                _sourceAdded = _sourceAdded,
+            };
+        }
+
+        /// <summary>
+        /// Performs a windowed join between the current branch stream (left) and another stream (right) based on a shared key.
+        /// </summary>
+        /// <typeparam name="TRight">The type of elements in the right stream.</typeparam>
+        /// <typeparam name="TKey">The type of the key used for matching elements from both streams.</typeparam>
+        /// <typeparam name="TResult">The type of the result produced by joining matched elements.</typeparam>
+        /// <param name="joinOperator">The stream-stream join operator that handles windowed buffering and matching.</param>
+        /// <returns>An <see cref="IBranchStreamBuilder{TIn, TResult}"/> representing the pipeline after the stream-stream join.</returns>
+        public IBranchStreamBuilder<TIn, TResult> JoinStream<TRight, TKey, TResult>(
+            StreamStreamJoinOperator<TCurrent, TRight, TKey, TResult> joinOperator)
+        {
+            if (joinOperator == null)
+                throw new ArgumentNullException(nameof(joinOperator));
 
             if (_firstOperator == null)
             {

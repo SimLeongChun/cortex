@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Operators.Joins;
 using Cortex.Streams.Operators.Windows;
 using System;
 using System.Collections.Generic;
@@ -199,6 +200,62 @@ namespace Cortex.Streams.Abstractions
                     IDataStore<TKey, TRight> rightStateStore,
                     Func<TCurrent, TKey> keySelector,
                     Func<TCurrent, TRight, TResult> joinFunction);
+
+        /// <summary>
+        /// Performs a windowed join between the current stream (left) and another stream (right) based on a shared key.
+        /// Elements from both streams are buffered within the configured time window and matched when they share the same key.
+        /// </summary>
+        /// <typeparam name="TRight">The type of elements in the right stream.</typeparam>
+        /// <typeparam name="TKey">The type of the key used for matching elements from both streams.</typeparam>
+        /// <typeparam name="TResult">The type of the result produced by joining matched elements.</typeparam>
+        /// <param name="rightStreamOperator">
+        /// The operator that provides the right stream. Use <see cref="StreamStreamJoinOperator{TLeft, TRight, TKey, TResult}"/>
+        /// and call its <c>ProcessRight</c> method to feed elements from the right stream.
+        /// </param>
+        /// <param name="leftKeySelector">Function to extract the join key from left stream elements.</param>
+        /// <param name="rightKeySelector">Function to extract the join key from right stream elements.</param>
+        /// <param name="leftTimestampSelector">Function to extract the event timestamp from left stream elements.</param>
+        /// <param name="rightTimestampSelector">Function to extract the event timestamp from right stream elements.</param>
+        /// <param name="joinFunction">Function that combines matched left and right elements to produce a result.</param>
+        /// <param name="configuration">
+        /// Optional configuration specifying window size, join type (inner/left/outer), and other settings.
+        /// Defaults to an inner join with a 5-minute window.
+        /// </param>
+        /// <returns>
+        /// An <see cref="IStreamBuilder{TIn, TResult}"/> representing the pipeline after the stream-stream join.
+        /// </returns>
+        /// <remarks>
+        /// <para>
+        /// Stream-stream joins are useful for correlating events from two different streams, such as:
+        /// <list type="bullet">
+        ///   <item>Matching orders with their corresponding shipments</item>
+        ///   <item>Correlating user clicks with page impressions</item>
+        ///   <item>Joining sensor readings from different devices</item>
+        /// </list>
+        /// </para>
+        /// <example>
+        /// <code>
+        /// var joinOperator = new StreamStreamJoinOperator&lt;Order, Shipment, string, OrderShipment&gt;(
+        ///     order => order.OrderId,
+        ///     shipment => shipment.OrderId,
+        ///     order => order.Timestamp,
+        ///     shipment => shipment.Timestamp,
+        ///     (order, shipment) => new OrderShipment(order, shipment),
+        ///     StreamJoinConfiguration.InnerJoin(TimeSpan.FromMinutes(30)));
+        ///     
+        /// var stream = StreamBuilder&lt;Order&gt;.CreateNewStream("OrderShipmentJoin")
+        ///     .Stream()
+        ///     .JoinStream(joinOperator)
+        ///     .Sink(result => Console.WriteLine($"Order {result.Order.Id} shipped!"))
+        ///     .Build();
+        ///     
+        /// // Feed shipments to the join operator from another source
+        /// shipmentStream.Subscribe(shipment => joinOperator.ProcessRight(shipment));
+        /// </code>
+        /// </example>
+        /// </remarks>
+        IStreamBuilder<TIn, TResult> JoinStream<TRight, TKey, TResult>(
+            StreamStreamJoinOperator<TCurrent, TRight, TKey, TResult> joinOperator);
 
 
                 /// <summary>
