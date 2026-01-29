@@ -1,4 +1,6 @@
 ﻿using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Net.Http;
 using System.Text;
@@ -16,6 +18,7 @@ namespace Cortex.Streams.Http
         private readonly string _endpoint;
         private readonly HttpClient _httpClient;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly ILogger<HttpSinkOperator<TInput>> _logger;
 
         // Retry configuration
         private readonly int _maxRetries;
@@ -29,12 +32,14 @@ namespace Cortex.Streams.Http
         /// <param name="initialDelay">Initial backoff delay when retrying.</param>
         /// <param name="httpClient">Optional HttpClient. If null, a new HttpClient will be created.</param>
         /// <param name="jsonOptions">Optional JsonSerializerOptions for serializing JSON.</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
         public HttpSinkOperator(
             string endpoint,
             int maxRetries = 3,
             TimeSpan? initialDelay = null,
             HttpClient httpClient = null,
-            JsonSerializerOptions jsonOptions = null)
+            JsonSerializerOptions jsonOptions = null,
+            ILogger<HttpSinkOperator<TInput>> logger = null)
         {
             _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
             _maxRetries = maxRetries;
@@ -42,6 +47,7 @@ namespace Cortex.Streams.Http
 
             _httpClient = httpClient ?? new HttpClient();
             _jsonOptions = jsonOptions ?? new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            _logger = logger ?? NullLogger<HttpSinkOperator<TInput>>.Instance;
         }
 
         /// <summary>
@@ -81,11 +87,11 @@ namespace Cortex.Streams.Http
                     attempt++;
                     if (attempt > _maxRetries)
                     {
-                        Console.WriteLine($"HttpSinkOperator: Exhausted retries for endpoint {_endpoint}. Error: {ex.Message}");
+                        _logger.LogError(ex, "HttpSinkOperator: Exhausted {MaxRetries} retries for endpoint {Endpoint}", _maxRetries, _endpoint);
                         break;
                     }
 
-                    Console.WriteLine($"HttpSinkOperator: Error sending data (attempt {attempt} of {_maxRetries}). Retrying in {delay}. Error: {ex.Message}");
+                    _logger.LogWarning(ex, "HttpSinkOperator: Error sending data to {Endpoint} (attempt {Attempt} of {MaxRetries}). Retrying in {Delay}", _endpoint, attempt, _maxRetries, delay);
                     Task.Delay(delay).Wait();
 
                     // Exponential backoff

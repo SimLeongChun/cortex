@@ -1,5 +1,7 @@
 ﻿using Cortex.Streams.Files.Deserializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.IO;
 using System.Linq;
@@ -17,6 +19,7 @@ namespace Cortex.Streams.Files
         private readonly string _filePath;
         private readonly FileFormat _fileFormat;
         private readonly IDeserializer<TOutput> _deserializer;
+        private readonly ILogger<FileSourceOperator<TOutput>> _logger;
         private CancellationTokenSource _cts;
         private Task _readingTask;
         private readonly object _lock = new object();
@@ -29,11 +32,17 @@ namespace Cortex.Streams.Files
         /// <param name="filePath">Path to the input file.</param>
         /// <param name="fileFormat">Format of the input file.</param>
         /// <param name="deserializer">Custom deserializer. If null, default deserializers are used.</param>
-        public FileSourceOperator(string filePath, FileFormat fileFormat, IDeserializer<TOutput> deserializer = null)
+        /// <param name="logger">Optional logger for diagnostic output.</param>
+        public FileSourceOperator(
+            string filePath,
+            FileFormat fileFormat,
+            IDeserializer<TOutput> deserializer = null,
+            ILogger<FileSourceOperator<TOutput>> logger = null)
         {
             _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
             _fileFormat = fileFormat;
             _deserializer = deserializer;
+            _logger = logger ?? NullLogger<FileSourceOperator<TOutput>>.Instance;
 
             if (_fileFormat == FileFormat.CSV && _deserializer == null)
             {
@@ -130,8 +139,7 @@ namespace Cortex.Streams.Files
             }
             catch (Exception ex)
             {
-                // Log or handle exceptions as needed
-                Console.WriteLine($"Error in FileSourceOperator: {ex.Message}");
+                _logger.LogError(ex, "Error in FileSourceOperator reading file {FilePath}", _filePath);
                 throw;
             }
         }

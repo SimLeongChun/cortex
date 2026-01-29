@@ -1,6 +1,8 @@
 ﻿using Azure.Messaging.ServiceBus;
 using Cortex.Streams.AzureServiceBus.Serializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,6 +20,7 @@ namespace Cortex.Streams.AzureServiceBus
         private readonly string _connectionString;
         private readonly string _queueOrTopicName;
         private readonly ISerializer<TInput> _serializer;
+        private readonly ILogger<AzureServiceBusSinkOperator<TInput>> _logger;
         private ServiceBusClient _client;
         private ServiceBusSender _sender;
         private bool _isRunning;
@@ -28,12 +31,18 @@ namespace Cortex.Streams.AzureServiceBus
         /// <param name="connectionString">The Azure Service Bus connection string.</param>
         /// <param name="queueOrTopicName">The name of the queue or topic to send messages to.</param>
         /// <param name="serializer">The serializer to convert TInput objects to strings.</param>
-        public AzureServiceBusSinkOperator(string connectionString, string queueOrTopicName, ISerializer<TInput>? serializer = null)
+        /// <param name="logger">Optional logger for diagnostic output.</param>
+        public AzureServiceBusSinkOperator(
+            string connectionString,
+            string queueOrTopicName,
+            ISerializer<TInput>? serializer = null,
+            ILogger<AzureServiceBusSinkOperator<TInput>>? logger = null)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _queueOrTopicName = queueOrTopicName ?? throw new ArgumentNullException(nameof(queueOrTopicName));
 
             _serializer = serializer ?? new DefaultJsonSerializer<TInput>();
+            _logger = logger ?? NullLogger<AzureServiceBusSinkOperator<TInput>>.Instance;
         }
 
         /// <summary>
@@ -57,13 +66,13 @@ namespace Cortex.Streams.AzureServiceBus
         {
             if (!_isRunning)
             {
-                Console.WriteLine("AzureServiceBusSinkOperator is not running. Call Start() before processing messages.");
+                _logger.LogWarning("AzureServiceBusSinkOperator is not running. Call Start() before processing messages");
                 return;
             }
 
             if (input == null)
             {
-                Console.WriteLine("AzureServiceBusSinkOperator received null input. Skipping.");
+                _logger.LogDebug("AzureServiceBusSinkOperator received null input. Skipping");
                 return;
             }
 
@@ -79,7 +88,7 @@ namespace Cortex.Streams.AzureServiceBus
 
             Dispose();
             _isRunning = false;
-            Console.WriteLine("AzureServiceBusSinkOperator stopped.");
+            _logger.LogInformation("AzureServiceBusSinkOperator stopped for {QueueOrTopicName}", _queueOrTopicName);
         }
 
         /// <summary>
@@ -102,8 +111,7 @@ namespace Cortex.Streams.AzureServiceBus
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error sending message to Azure Service Bus: {ex.Message}");
-                // TODO: Implement retry logic or send to a dead-letter queue as needed.
+                _logger.LogError(ex, "Error sending message to Azure Service Bus {QueueOrTopicName}", _queueOrTopicName);
             }
         }
 

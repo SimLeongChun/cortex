@@ -1,6 +1,8 @@
 ﻿using Azure.Storage.Blobs;
 using Cortex.Streams.AzureBlobStorage.Serializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Polly;
 using Polly.Retry;
 using System;
@@ -18,6 +20,7 @@ namespace Cortex.Streams.AzureBlobStorage
         private readonly string _directoryPath;
         private readonly ISerializer<TInput> _serializer;
         private readonly BlobContainerClient _containerClient;
+        private readonly ILogger<AzureBlobStorageBulkSinkOperator<TInput>> _logger;
         private bool _isRunning;
 
         // For batching
@@ -36,13 +39,15 @@ namespace Cortex.Streams.AzureBlobStorage
         /// <param name="serializer">Serializer to convert TInput objects to strings.</param>
         /// <param name="batchSize">Number of messages to batch before uploading.</param>
         /// <param name="flushInterval">Time interval to flush the buffer regardless of batch size.</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
         public AzureBlobStorageBulkSinkOperator(
             string connectionString,
             string containerName,
             string directoryPath,
             ISerializer<TInput> serializer,
             int batchSize = 100,
-            TimeSpan? flushInterval = null)
+            TimeSpan? flushInterval = null,
+            ILogger<AzureBlobStorageBulkSinkOperator<TInput>>? logger = null)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _containerName = containerName ?? throw new ArgumentNullException(nameof(containerName));
@@ -50,6 +55,7 @@ namespace Cortex.Streams.AzureBlobStorage
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _batchSize = batchSize;
             _flushInterval = flushInterval ?? TimeSpan.FromSeconds(10);
+            _logger = logger ?? NullLogger<AzureBlobStorageBulkSinkOperator<TInput>>.Instance;
 
             _containerClient = new BlobContainerClient(_connectionString, _containerName);
             _retryPolicy = Policy
@@ -59,7 +65,7 @@ namespace Cortex.Streams.AzureBlobStorage
                     sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
                     onRetry: (exception, timeSpan, retryCount, context) =>
                     {
-                        Console.WriteLine($"Retry {retryCount} after {timeSpan} due to {exception.Message}");
+                        _logger.LogWarning(exception, "Retry {RetryCount} after {TimeSpan} for Azure Blob Storage bulk upload", retryCount, timeSpan);
                     });
 
             _timer = new Timer(async _ => await FlushBufferAsync(), null, _flushInterval, _flushInterval);
@@ -84,13 +90,13 @@ namespace Cortex.Streams.AzureBlobStorage
         {
             if (!_isRunning)
             {
-                Console.WriteLine("AzureBlobStorageSinkOperator is not running. Call Start() before processing messages.");
+                _logger.LogWarning("AzureBlobStorageBulkSinkOperator is not running. Call Start() before processing messages");
                 return;
             }
 
             if (input == null)
             {
-                Console.WriteLine("AzureBlobStorageSinkOperator received null input. Skipping.");
+                _logger.LogDebug("AzureBlobStorageBulkSinkOperator received null input. Skipping");
                 return;
             }
 
@@ -117,7 +123,7 @@ namespace Cortex.Streams.AzureBlobStorage
             FlushBufferAsync().Wait();
             Dispose();
             _isRunning = false;
-            Console.WriteLine("AzureBlobStorageSinkOperator stopped.");
+            _logger.LogInformation("AzureBlobStorageBulkSinkOperator stopped for container '{ContainerName}'", _containerName);
         }
 
         /// <summary>

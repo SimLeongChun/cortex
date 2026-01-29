@@ -3,6 +3,8 @@ using Amazon.SQS;
 using Amazon.SQS.Model;
 using Cortex.Streams.AWSSQS.Serializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Threading.Tasks;
 
@@ -14,12 +16,18 @@ namespace Cortex.Streams.AWSSQS
         private readonly string _queueUrl;
         private readonly IAmazonSQS _sqsClient;
         private readonly ISerializer<TInput> _serializer;
+        private readonly ILogger<SQSSinkOperator<TInput>> _logger;
 
-        public SQSSinkOperator(string queueUrl, RegionEndpoint region = null, ISerializer < TInput> serializer = null)
+        public SQSSinkOperator(
+            string queueUrl,
+            RegionEndpoint region = null,
+            ISerializer<TInput> serializer = null,
+            ILogger<SQSSinkOperator<TInput>> logger = null)
         {
             _queueUrl = queueUrl ?? throw new ArgumentNullException(nameof(queueUrl));
 
             _serializer = serializer ?? new DefaultJsonSerializer<TInput>();
+            _logger = logger ?? NullLogger<SQSSinkOperator<TInput>>.Instance;
 
             _sqsClient = new AmazonSQSClient(region ?? RegionEndpoint.USEast1);
         }
@@ -49,8 +57,7 @@ namespace Cortex.Streams.AWSSQS
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error sending message to SQS: {ex.Message}");
-                // TODO: Implement retry logic or send to a dead-letter queue as needed.
+                _logger.LogError(ex, "Error sending message to SQS queue {QueueUrl}", _queueUrl);
             }
         }
 

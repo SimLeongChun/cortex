@@ -2,6 +2,8 @@
 using Amazon.S3.Transfer;
 using Cortex.Streams.Operators;
 using Cortex.Streams.S3.Serializers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Threading.Tasks;
 
@@ -18,6 +20,7 @@ namespace Cortex.Streams.S3
         private readonly ISerializer<TInput> _serializer;
         private readonly IAmazonS3 _s3Client;
         private readonly TransferUtility _transferUtility;
+        private readonly ILogger<S3SinkOperator<TInput>> _logger;
         private bool _isRunning;
 
         /// <summary>
@@ -27,12 +30,19 @@ namespace Cortex.Streams.S3
         /// <param name="folderPath">Path within the bucket to store data (e.g., "data/ingest").</param>
         /// <param name="s3Client">Instance of IAmazonS3 for interacting with AWS S3.</param>
         /// <param name="serializer">Serializer to convert TInput objects to strings. Default is DefaultJsonSerializer</param>
-        public S3SinkOperator(string bucketName, string folderPath, IAmazonS3 s3Client, ISerializer<TInput>? serializer = null)
+        /// <param name="logger">Optional logger for diagnostic output.</param>
+        public S3SinkOperator(
+            string bucketName,
+            string folderPath,
+            IAmazonS3 s3Client,
+            ISerializer<TInput>? serializer = null,
+            ILogger<S3SinkOperator<TInput>>? logger = null)
         {
             _bucketName = bucketName ?? throw new ArgumentNullException(nameof(bucketName));
             _folderPath = folderPath ?? throw new ArgumentNullException(nameof(folderPath));
 
             _serializer = serializer ?? new DefaultJsonSerializer<TInput>();
+            _logger = logger ?? NullLogger<S3SinkOperator<TInput>>.Instance;
 
             _s3Client = s3Client ?? throw new ArgumentNullException(nameof(s3Client));
             _transferUtility = new TransferUtility(_s3Client);
@@ -56,13 +66,13 @@ namespace Cortex.Streams.S3
         {
             if (!_isRunning)
             {
-                Console.WriteLine("S3SinkOperator is not running. Call Start() before processing messages.");
+                _logger.LogWarning("S3SinkOperator is not running. Call Start() before processing messages");
                 return;
             }
 
             if (input == null)
             {
-                Console.WriteLine("S3SinkOperator received null input. Skipping.");
+                _logger.LogDebug("S3SinkOperator received null input. Skipping");
                 return;
             }
 
@@ -78,7 +88,7 @@ namespace Cortex.Streams.S3
 
             Dispose();
             _isRunning = false;
-            Console.WriteLine("S3SinkOperator stopped.");
+            _logger.LogInformation("S3SinkOperator stopped for bucket {BucketName}", _bucketName);
         }
 
         /// <summary>
@@ -107,13 +117,11 @@ namespace Cortex.Streams.S3
             }
             catch (AmazonS3Exception s3Ex)
             {
-                Console.WriteLine($"Error uploading message to S3: {s3Ex.Message}");
-                // TODO: Implement retry logic or send to a dead-letter location as needed.
+                _logger.LogError(s3Ex, "Error uploading message to S3 bucket {BucketName} at key {Key}", _bucketName, key);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"General error uploading message to S3: {ex.Message}");
-                // TODO: Implement additional error handling as needed.
+                _logger.LogError(ex, "General error uploading message to S3 bucket {BucketName} at key {Key}", _bucketName, key);
             }
         }
 

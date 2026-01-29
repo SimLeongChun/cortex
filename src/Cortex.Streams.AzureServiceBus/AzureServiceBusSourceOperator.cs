@@ -1,6 +1,8 @@
 ﻿using Azure.Messaging.ServiceBus;
 using Cortex.Streams.AzureServiceBus.Deserializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Threading.Tasks;
 
@@ -16,6 +18,7 @@ namespace Cortex.Streams.AzureServiceBus
         private readonly string _queueOrTopicName;
         private readonly IDeserializer<TOutput> _deserializer;
         private readonly ServiceBusProcessorOptions _serviceBusProcessorOptions;
+        private readonly ILogger<AzureServiceBusSourceOperator<TOutput>> _logger;
         private ServiceBusProcessor _processor;
         private Action<TOutput> _emitAction;
         private bool _isRunning;
@@ -26,12 +29,20 @@ namespace Cortex.Streams.AzureServiceBus
         /// <param name="connectionString">The Azure Service Bus connection string.</param>
         /// <param name="queueOrTopicName">The name of the queue or topic to consume from.</param>
         /// <param name="deserializer">The deserializer to convert message strings to TOutput objects, default is DefaultJsonDeserializer</param>
-        public AzureServiceBusSourceOperator(string connectionString, string queueOrTopicName, IDeserializer<TOutput>? deserializer = null, ServiceBusProcessorOptions serviceBusProcessorOptions = null)
+        /// <param name="serviceBusProcessorOptions">Optional processor options.</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
+        public AzureServiceBusSourceOperator(
+            string connectionString,
+            string queueOrTopicName,
+            IDeserializer<TOutput>? deserializer = null,
+            ServiceBusProcessorOptions serviceBusProcessorOptions = null,
+            ILogger<AzureServiceBusSourceOperator<TOutput>>? logger = null)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _queueOrTopicName = queueOrTopicName ?? throw new ArgumentNullException(nameof(queueOrTopicName));
 
             _deserializer = deserializer ?? new DefaultJsonDeserializer<TOutput>();
+            _logger = logger ?? NullLogger<AzureServiceBusSourceOperator<TOutput>>.Instance;
 
             _serviceBusProcessorOptions = serviceBusProcessorOptions ?? new ServiceBusProcessorOptions()
             {
@@ -74,7 +85,7 @@ namespace Cortex.Streams.AzureServiceBus
             Task.Run(async () => await _processor.StopProcessingAsync()).Wait();
             Dispose();
             _isRunning = false;
-            Console.WriteLine("AzureServiceBusSourceOperator stopped.");
+            _logger.LogInformation("AzureServiceBusSourceOperator stopped for {QueueOrTopicName}", _queueOrTopicName);
         }
 
         /// <summary>
@@ -93,7 +104,7 @@ namespace Cortex.Streams.AzureServiceBus
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error processing message: {ex.Message}");
+                _logger.LogError(ex, "Error processing message from Azure Service Bus {QueueOrTopicName}", _queueOrTopicName);
                 // Optionally abandon the message or dead-letter it
                 await args.AbandonMessageAsync(args.Message);
             }
@@ -104,7 +115,7 @@ namespace Cortex.Streams.AzureServiceBus
         /// </summary>
         private Task ErrorHandler(ProcessErrorEventArgs args)
         {
-            Console.WriteLine($"Error in AzureServiceBusSourceOperator: {args.Exception.Message}");
+            _logger.LogError(args.Exception, "Error in AzureServiceBusSourceOperator for {QueueOrTopicName}", _queueOrTopicName);
             return Task.CompletedTask;
         }
 

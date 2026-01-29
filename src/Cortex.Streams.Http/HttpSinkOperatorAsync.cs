@@ -1,4 +1,6 @@
 ﻿using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Concurrent;
 using System.Net.Http;
@@ -18,6 +20,7 @@ namespace Cortex.Streams.Http
         private readonly string _endpoint;
         private readonly HttpClient _httpClient;
         private readonly JsonSerializerOptions _jsonOptions;
+        private readonly ILogger<HttpSinkOperatorAsync<TInput>> _logger;
 
         // Retry configuration
         private readonly int _maxRetries;
@@ -39,12 +42,14 @@ namespace Cortex.Streams.Http
         /// If null, a new HttpClient will be created (but consider <see cref="IHttpClientFactory"/> in production).
         /// </param>
         /// <param name="jsonOptions">Optional JSON serialization options.</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
         public HttpSinkOperatorAsync(
             string endpoint,
             int maxRetries = 3,
             TimeSpan? initialDelay = null,
             HttpClient httpClient = null,
-            JsonSerializerOptions jsonOptions = null)
+            JsonSerializerOptions jsonOptions = null,
+            ILogger<HttpSinkOperatorAsync<TInput>> logger = null)
         {
             _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
             _maxRetries = maxRetries;
@@ -52,6 +57,7 @@ namespace Cortex.Streams.Http
 
             _httpClient = httpClient ?? new HttpClient();
             _jsonOptions = jsonOptions ?? new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            _logger = logger ?? NullLogger<HttpSinkOperatorAsync<TInput>>.Instance;
         }
 
         /// <summary>
@@ -94,7 +100,7 @@ namespace Cortex.Streams.Http
             catch (AggregateException ex)
             {
                 // If the worker loop was canceled or faulted, handle if needed
-                Console.WriteLine($"HttpSinkOperatorAsync: Worker stopped with exception: {ex.Message}");
+                _logger.LogWarning(ex, "HttpSinkOperatorAsync: Worker stopped with exception for endpoint {Endpoint}", _endpoint);
             }
 
             _cts.Dispose();
@@ -156,12 +162,11 @@ namespace Cortex.Streams.Http
                     attempt++;
                     if (attempt > _maxRetries)
                     {
-                        Console.WriteLine($"HttpSinkOperatorAsync: Exhausted retries for {_endpoint}. Error: {ex.Message}");
+                        _logger.LogError(ex, "HttpSinkOperatorAsync: Exhausted {MaxRetries} retries for endpoint {Endpoint}", _maxRetries, _endpoint);
                         break;
                     }
 
-                    Console.WriteLine($"HttpSinkOperatorAsync: Error sending data (attempt {attempt} of {_maxRetries}). " +
-                                      $"Retrying in {delay}. Error: {ex.Message}");
+                    _logger.LogWarning(ex, "HttpSinkOperatorAsync: Error sending data to {Endpoint} (attempt {Attempt} of {MaxRetries}). Retrying in {Delay}", _endpoint, attempt, _maxRetries, delay);
 
                     // Exponential backoff, but only if not canceled
                     if (!token.IsCancellationRequested)

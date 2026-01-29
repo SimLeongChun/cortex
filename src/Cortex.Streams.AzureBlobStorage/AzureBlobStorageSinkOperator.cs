@@ -4,6 +4,8 @@ using Polly.Retry;
 using Polly;
 using Cortex.Streams.AzureBlobStorage.Serializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Threading.Tasks;
 
@@ -20,6 +22,7 @@ namespace Cortex.Streams.AzureBlobStorage
         private readonly string _directoryPath;
         private readonly ISerializer<TInput> _serializer;
         private readonly BlobContainerClient _containerClient;
+        private readonly ILogger<AzureBlobStorageSinkOperator<TInput>> _logger;
         private bool _isRunning;
 
         // Retry policy using Polly
@@ -32,16 +35,19 @@ namespace Cortex.Streams.AzureBlobStorage
         /// <param name="containerName">Name of the Blob container.</param>
         /// <param name="directoryPath">Path within the container to store data (e.g., "data/ingest").</param>
         /// <param name="serializer">Serializer to convert TInput objects to strings.</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
         public AzureBlobStorageSinkOperator(
             string connectionString,
             string containerName,
             string directoryPath,
-            ISerializer<TInput>? serializer = null)
+            ISerializer<TInput>? serializer = null,
+            ILogger<AzureBlobStorageSinkOperator<TInput>>? logger = null)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _containerName = containerName ?? throw new ArgumentNullException(nameof(containerName));
             _directoryPath = directoryPath ?? throw new ArgumentNullException(nameof(directoryPath));
             _serializer = serializer ?? new DefaultJsonSerializer<TInput>();
+            _logger = logger ?? NullLogger<AzureBlobStorageSinkOperator<TInput>>.Instance;
 
             _containerClient = new BlobContainerClient(_connectionString, _containerName);
             _retryPolicy = Policy
@@ -51,7 +57,7 @@ namespace Cortex.Streams.AzureBlobStorage
                     sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
                     onRetry: (exception, timeSpan, retryCount, context) =>
                     {
-                        Console.WriteLine($"Retry {retryCount} after {timeSpan} due to {exception.Message}");
+                        _logger.LogWarning(exception, "Retry {RetryCount} after {TimeSpan} for Azure Blob Storage upload", retryCount, timeSpan);
                     });
         }
 
@@ -64,7 +70,7 @@ namespace Cortex.Streams.AzureBlobStorage
 
             _containerClient.CreateIfNotExists(PublicAccessType.None);
             _isRunning = true;
-            Console.WriteLine($"AzureBlobStorageSinkOperator started and connected to container '{_containerName}', directory '{_directoryPath}'.");
+            _logger.LogInformation("AzureBlobStorageSinkOperator started for container '{ContainerName}', directory '{DirectoryPath}'", _containerName, _directoryPath);
         }
 
         /// <summary>
@@ -75,13 +81,13 @@ namespace Cortex.Streams.AzureBlobStorage
         {
             if (!_isRunning)
             {
-                Console.WriteLine("AzureBlobStorageSinkOperator is not running. Call Start() before processing messages.");
+                _logger.LogWarning("AzureBlobStorageSinkOperator is not running. Call Start() before processing messages");
                 return;
             }
 
             if (input == null)
             {
-                Console.WriteLine("AzureBlobStorageSinkOperator received null input. Skipping.");
+                _logger.LogDebug("AzureBlobStorageSinkOperator received null input. Skipping");
                 return;
             }
 
@@ -105,13 +111,12 @@ namespace Cortex.Streams.AzureBlobStorage
                 await _retryPolicy.ExecuteAsync(async () =>
                 {
                     await blobClient.UploadAsync(stream, new BlobHttpHeaders { ContentType = "application/json" });
-                    Console.WriteLine($"Message uploaded to Azure Blob Storage: {blobName}");
+                    _logger.LogDebug("Message uploaded to Azure Blob Storage: {BlobName}", blobName);
                 });
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error uploading message to Azure Blob Storage: {ex.Message}");
-                // TODO: Implement dead-lettering or alternative handling as needed.
+                _logger.LogError(ex, "Error uploading message to Azure Blob Storage: {BlobName}", blobName);
             }
         }
 
@@ -124,7 +129,7 @@ namespace Cortex.Streams.AzureBlobStorage
 
             Dispose();
             _isRunning = false;
-            Console.WriteLine("AzureBlobStorageSinkOperator stopped.");
+            _logger.LogInformation("AzureBlobStorageSinkOperator stopped for container '{ContainerName}'", _containerName);
         }
 
         /// <summary>

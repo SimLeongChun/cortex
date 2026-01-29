@@ -1,6 +1,8 @@
 ﻿using Confluent.Kafka;
 using Cortex.Streams.Kafka.Serializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 
 namespace Cortex.Streams.Kafka
@@ -10,11 +12,18 @@ namespace Cortex.Streams.Kafka
         private readonly string _bootstrapServers;
         private readonly string _topic;
         private readonly IProducer<Null, TInput> _producer;
+        private readonly ILogger<KafkaSinkOperator<TInput>> _logger;
 
-        public KafkaSinkOperator(string bootstrapServers, string topic, ProducerConfig config = null, ISerializer<TInput> serializer = null)
+        public KafkaSinkOperator(
+            string bootstrapServers,
+            string topic,
+            ProducerConfig config = null,
+            ISerializer<TInput> serializer = null,
+            ILogger<KafkaSinkOperator<TInput>> logger = null)
         {
             _bootstrapServers = bootstrapServers;
             _topic = topic;
+            _logger = logger ?? NullLogger<KafkaSinkOperator<TInput>>.Instance;
 
             var producerConfig = config ?? new ProducerConfig
             {
@@ -35,7 +44,7 @@ namespace Cortex.Streams.Kafka
             {
                 if (deliveryReport.Error.IsError)
                 {
-                    Console.WriteLine($"Delivery Error: {deliveryReport.Error.Reason}");
+                    _logger.LogError("Kafka delivery error to topic {Topic}: {Reason}", _topic, deliveryReport.Error.Reason);
                 }
             });
         }

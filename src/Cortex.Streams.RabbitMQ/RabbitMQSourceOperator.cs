@@ -1,5 +1,7 @@
 ﻿using Cortex.Streams.Operators;
 using Cortex.Streams.RabbitMQ.Deserializers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using System;
@@ -18,6 +20,7 @@ namespace Cortex.Streams.RabbitMQ
         private readonly string _username;
         private readonly string _password;
         private readonly IDeserializer<TOutput> _deserializer;
+        private readonly ILogger<RabbitMQSourceOperator<TOutput>> _logger;
         private IConnection _connection;
         private IModel _channel;
         private EventingBasicConsumer _consumer;
@@ -32,12 +35,20 @@ namespace Cortex.Streams.RabbitMQ
         /// <param name="deserializer">The deserializer to convert message strings to TOutput objects.</param>
         /// <param name="username">The RabbitMQ username.</param>
         /// <param name="password">The RabbitMQ password.</param>
-        public RabbitMQSourceOperator(string hostname, string queueName, string username = "guest", string password = "guest", IDeserializer<TOutput> deserializer = null)
+        /// <param name="logger">Optional logger for diagnostic output.</param>
+        public RabbitMQSourceOperator(
+            string hostname,
+            string queueName,
+            string username = "guest",
+            string password = "guest",
+            IDeserializer<TOutput> deserializer = null,
+            ILogger<RabbitMQSourceOperator<TOutput>> logger = null)
         {
             _hostname = hostname ?? throw new ArgumentNullException(nameof(hostname));
             _queueName = queueName ?? throw new ArgumentNullException(nameof(queueName));
 
             _deserializer = deserializer ?? new DefaultJsonDeserializer<TOutput>();
+            _logger = logger ?? NullLogger<RabbitMQSourceOperator<TOutput>>.Instance;
 
             _username = username;
             _password = password;
@@ -91,7 +102,7 @@ namespace Cortex.Streams.RabbitMQ
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error processing message from RabbitMQ: {ex.Message}");
+                    _logger.LogError(ex, "Error processing message from RabbitMQ queue {QueueName}", _queueName);
                     // Optionally reject and requeue the message or send to dead-letter queue
                     _channel.BasicNack(deliveryTag: ea.DeliveryTag, multiple: false, requeue: false);
                 }

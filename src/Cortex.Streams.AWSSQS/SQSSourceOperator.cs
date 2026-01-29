@@ -6,6 +6,8 @@ using System.Threading;
 using System;
 using Cortex.Streams.AWSSQS.Deserializers;
 using Amazon;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Cortex.Streams.AWSSQS
 {
@@ -14,13 +16,19 @@ namespace Cortex.Streams.AWSSQS
         private readonly string _queueUrl;
         private readonly IAmazonSQS _sqsClient;
         private readonly IDeserializer<TOutput> _deserializer;
+        private readonly ILogger<SQSSourceOperator<TOutput>> _logger;
         private CancellationTokenSource _cancellationTokenSource;
 
-        public SQSSourceOperator(string queueUrl, IDeserializer<TOutput> deserializer = null, RegionEndpoint region = null)
+        public SQSSourceOperator(
+            string queueUrl,
+            IDeserializer<TOutput> deserializer = null,
+            RegionEndpoint region = null,
+            ILogger<SQSSourceOperator<TOutput>> logger = null)
         {
             _queueUrl = queueUrl ?? throw new ArgumentNullException(nameof(queueUrl));
 
             _deserializer = deserializer ?? new DefaultJsonDeserializer<TOutput>();
+            _logger = logger ?? NullLogger<SQSSourceOperator<TOutput>>.Instance;
 
             _sqsClient = new AmazonSQSClient(region ?? RegionEndpoint.USEast1);
         }
@@ -63,8 +71,7 @@ namespace Cortex.Streams.AWSSQS
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Deserialization or processing failed: {ex.Message}");
-                            // Optionally handle the failed message (e.g., send to dead-letter queue)
+                            _logger.LogError(ex, "Deserialization or processing failed for SQS message from queue {QueueUrl}", _queueUrl);
                         }
                     }
                 }
@@ -75,7 +82,7 @@ namespace Cortex.Streams.AWSSQS
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error receiving messages from SQS: {ex.Message}");
+                    _logger.LogError(ex, "Error receiving messages from SQS queue {QueueUrl}", _queueUrl);
                     await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken); // Wait before retrying
                 }
             }

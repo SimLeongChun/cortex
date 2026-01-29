@@ -2,6 +2,8 @@
 using Amazon.S3.Transfer;
 using Cortex.Streams.Operators;
 using Cortex.Streams.S3.Serializers;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,6 +23,7 @@ namespace Cortex.Streams.S3
         private readonly ISerializer<TInput> _serializer;
         private readonly IAmazonS3 _s3Client;
         private readonly TransferUtility _transferUtility;
+        private readonly ILogger<S3SinkBulkOperator<TInput>> _logger;
         private bool _isRunning;
 
         // Bulk parameters
@@ -36,13 +39,23 @@ namespace Cortex.Streams.S3
         /// <param name="folderPath">Path within the bucket to store data (e.g., "data/ingest").</param>
         /// <param name="s3Client">Instance of IAmazonS3 for interacting with AWS S3.</param>
         /// <param name="serializer">Serializer to convert TInput objects to strings. Default is DefaultJsonSerializer</param>
-        public S3SinkBulkOperator(string bucketName, string folderPath,
-            IAmazonS3 s3Client, ISerializer<TInput>? serializer = null, int batchSize = 100, TimeSpan? flushInterval = null)
+        /// <param name="batchSize">Number of items to batch before uploading.</param>
+        /// <param name="flushInterval">Time interval to flush the buffer.</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
+        public S3SinkBulkOperator(
+            string bucketName,
+            string folderPath,
+            IAmazonS3 s3Client,
+            ISerializer<TInput>? serializer = null,
+            int batchSize = 100,
+            TimeSpan? flushInterval = null,
+            ILogger<S3SinkBulkOperator<TInput>>? logger = null)
         {
             _bucketName = bucketName ?? throw new ArgumentNullException(nameof(bucketName));
             _folderPath = folderPath ?? throw new ArgumentNullException(nameof(folderPath));
 
             _serializer = serializer ?? new DefaultJsonSerializer<TInput>();
+            _logger = logger ?? NullLogger<S3SinkBulkOperator<TInput>>.Instance;
 
             _s3Client = s3Client ?? throw new ArgumentNullException(nameof(s3Client));
             _transferUtility = new TransferUtility(_s3Client);
@@ -71,13 +84,13 @@ namespace Cortex.Streams.S3
         {
             if (!_isRunning)
             {
-                Console.WriteLine("S3SinkOperator is not running. Call Start() before processing messages.");
+                _logger.LogWarning("S3SinkBulkOperator is not running. Call Start() before processing messages");
                 return;
             }
 
             if (input == null)
             {
-                Console.WriteLine("S3SinkOperator received null input. Skipping.");
+                _logger.LogDebug("S3SinkBulkOperator received null input. Skipping");
                 return;
             }
 
@@ -102,7 +115,7 @@ namespace Cortex.Streams.S3
 
             Dispose();
             _isRunning = false;
-            Console.WriteLine("S3SinkOperator stopped.");
+            _logger.LogInformation("S3SinkBulkOperator stopped for bucket {BucketName}", _bucketName);
         }
 
         private async Task FlushBufferAsync()
@@ -145,13 +158,11 @@ namespace Cortex.Streams.S3
             }
             catch (AmazonS3Exception s3Ex)
             {
-                Console.WriteLine($"Error uploading batch to S3: {s3Ex.Message}");
-                // TODO: Implement retry logic or send to a dead-letter location as needed.
+                _logger.LogError(s3Ex, "Error uploading batch to S3 bucket {BucketName} at key {Key}", _bucketName, key);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"General error uploading batch to S3: {ex.Message}");
-                // TODO: Implement additional error handling as needed.
+                _logger.LogError(ex, "General error uploading batch to S3 bucket {BucketName} at key {Key}", _bucketName, key);
             }
         }
 

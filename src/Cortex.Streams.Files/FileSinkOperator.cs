@@ -1,5 +1,7 @@
 ﻿using Cortex.Streams.Files.Serializers;
 using Cortex.Streams.Operators;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.IO;
 
@@ -11,6 +13,7 @@ namespace Cortex.Streams.Files
         private readonly FileSinkMode _sinkMode;
         private readonly ISerializer<TInput> _serializer;
         private readonly string _singleFilePath;
+        private readonly ILogger<FileSinkOperator<TInput>> _logger;
         private StreamWriter _singleFileWriter;
         private readonly object _lock = new object();
         private bool _isRunning = false;
@@ -22,15 +25,18 @@ namespace Cortex.Streams.Files
         /// <param name="sinkMode">Mode of sinking: SingleFile or MultiFile.</param>
         /// <param name="serializer">Custom serializer. If null, default serializers are used based on file format.</param>
         /// <param name="singleFileName">Name of the single file (required if sinkMode is SingleFile).</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
         public FileSinkOperator(
             string outputDirectory,
             FileSinkMode sinkMode,
             ISerializer<TInput> serializer = null,
-            string singleFileName = "output.txt")
+            string singleFileName = "output.txt",
+            ILogger<FileSinkOperator<TInput>> logger = null)
         {
             _outputDirectory = outputDirectory ?? throw new ArgumentNullException(nameof(outputDirectory));
             _sinkMode = sinkMode;
             _serializer = serializer;
+            _logger = logger ?? NullLogger<FileSinkOperator<TInput>>.Instance;
             Directory.CreateDirectory(_outputDirectory);
 
             if (_sinkMode == FileSinkMode.SingleFile)
@@ -95,8 +101,7 @@ namespace Cortex.Streams.Files
                 }
                 catch (Exception ex)
                 {
-                    // Log or handle exceptions as needed
-                    Console.WriteLine($"Error writing to file {filePath}: {ex.Message}");
+                    _logger.LogError(ex, "Error writing to file {FilePath}", filePath);
                 }
             }
         }

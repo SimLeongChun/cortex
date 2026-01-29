@@ -4,6 +4,7 @@ using Cortex.Streams.Operators;
 using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.Core.Bulk;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -82,7 +83,7 @@ namespace Cortex.Streams.Elasticsearch
 
             _failedDocumentsStore = failedDocumentsStore ?? new InMemoryStateStore<string, TInput>("default_failedDocuments");
 
-            _logger = logger;
+            _logger = logger ?? NullLogger<ElasticsearchSinkOperator<TInput>>.Instance;
 
             _batchSize = batchSize;
             _retryInterval = retryInterval ?? TimeSpan.FromSeconds(60);
@@ -304,28 +305,12 @@ namespace Cortex.Streams.Elasticsearch
         // --------------------------------------------------------------------
         private void LogInformation(string message)
         {
-            if (_logger != null)
-            {
-                _logger.LogInformation(message);
-            }
-            else
-            {
-                Console.WriteLine(message);
-            }
+            _logger.LogInformation(message);
         }
 
         private void LogError(string message, Exception ex = null)
         {
-            if (_logger != null)
-            {
-                _logger.LogError(ex, message);
-            }
-            else
-            {
-                Console.WriteLine(ex != null
-                    ? $"ERROR: {message}\n{ex}"
-                    : $"ERROR: {message}");
-            }
+            _logger.LogError(ex, message);
         }
 
         /// <summary>
