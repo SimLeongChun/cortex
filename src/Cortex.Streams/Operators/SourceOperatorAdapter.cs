@@ -1,4 +1,5 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -82,9 +83,17 @@ namespace Cortex.Streams.Operators
                     {
                         try
                         {
-                            _incrementEmittedCounter();
+                            _incrementEmittedCounter?.Invoke();
                             _nextOperator?.Process(output);
                             span.SetAttribute("status", "success");
+                        }
+                        catch (StreamStoppedException ex)
+                        {
+                            span.SetAttribute("status", "stopped");
+                            span.SetAttribute("exception", ex.ToString());
+
+                            // Graceful stop: stop the source and do not rethrow.
+                            Stop();
                         }
                         catch (Exception ex)
                         {
@@ -95,13 +104,20 @@ namespace Cortex.Streams.Operators
                         finally
                         {
                             stopwatch.Stop();
-                            _recordEmissionTime(stopwatch.Elapsed.TotalMilliseconds);
+                            _recordEmissionTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
                         }
                     }
                 }
                 else
                 {
-                    _nextOperator?.Process(output);
+                    try
+                    {
+                        _nextOperator?.Process(output);
+                    }
+                    catch (StreamStoppedException)
+                    {
+                        Stop();
+                    }
                 }
             });
         }

@@ -2,16 +2,20 @@
 
 **Cortex.Serialization.Yaml** A lightweight, dependency‑free YAML serializer/deserializer for .NET 8+.
 
-Built as part of the [Cortex Data Framework](https://github.com/buildersoftio/cortex), this library simplifies serializer/deserializer for YAML:
-
+Built as part of the [Cortex Data Framework](https://github.com/buildersoftio/cortex), this library provides comprehensive YAML support:
 
 - ✅ **Serialize & Deserialize** POCOs, collections, and dictionaries
+- ✅ **Flow style collections**: `[...]` sequences and `{...}` mappings
+- ✅ **Anchors & Aliases**: Reuse values with `&anchor` and `*alias`
+- ✅ **Merge keys**: Combine mappings with `<<: *alias`
+- ✅ **Comments**: Parse and handle `#` comments
+- ✅ **Custom tags**: Support for `!tag` and `!!type` annotations
+- ✅ **Block scalars**: Literal (`|`) and folded (`>`) multi-line strings
 - ✅ **Naming conventions**: CamelCase, PascalCase, SnakeCase, KebabCase, Original
-- ✅ **Attributes** `[YamlProperty(Name=…)]`, `[YamlIgnore]`
-- ✅ **Custom type converters** via `IYamlTypeConverter` (primitive/date/guid built‑ins included)
-- ✅ **Settings**: indentation, emit nulls/defaults, sort properties, case‑insensitive matching
-
-This version doesnot include: flow style ([], {}), comments preservation, anchors/aliases & merge keys, custom tags, streaming APIs
+- ✅ **Attributes**: `[YamlProperty(Name=…)]`, `[YamlIgnore]`
+- ✅ **Custom type converters** via `IYamlTypeConverter`
+- ✅ **Full escape sequence support**: `\n`, `\t`, `\r`, `\\`, `\"`, and more
+- ✅ **Configurable settings**: indentation, emit nulls/defaults, sort properties, case‑insensitive matching
 
 ---
 
@@ -81,7 +85,10 @@ var settings = new YamlSerializerSettings
     EmitNulls = true,                             // include null properties
     EmitDefaults = true,                          // include default(T) values
     SortProperties = false,                       // keep reflection order
-    Indentation = 2                               // spaces per indent level
+    Indentation = 2,                              // spaces per indent level
+    PreferFlowStyle = false,                      // use [...] and {...} for collections
+    FlowStyleThreshold = 80,                      // max line length for flow style
+    EmitComments = true                           // emit preserved comments
 };
 ```
 
@@ -92,7 +99,9 @@ var settings = new YamlDeserializerSettings
 {
     NamingConvention = new SnakeCaseConvention(),
     CaseInsensitive = true,
-    IgnoreUnmatchedProperties = true
+    IgnoreUnmatchedProperties = true,
+    PreserveComments = false,                     // keep comments for round-trip
+    ResolveAnchors = true                         // auto-resolve aliases
 };
 ```
 
@@ -159,12 +168,68 @@ var s = new YamlSerializer(new YamlSerializerSettings());
 s.Converters.Add(new YesNoBoolConverter());
 ```
 
-## ⚠️ Limits (current version)
-- No flow style (`[]`, `{}`) collections
-- No **comments** preservation/round‑trip of `# …`
-- No **anchors/aliases/merge keys**
-- No **custom tags**
-- **Pragmatic YAML subset**; quoting/escaping is intentionally simple
+### 5) Flow style collections
+
+Parse compact, JSON-like syntax:
+
+```yaml
+tags: [web, api, production]
+metadata: {version: 1.0, author: John}
+```
+
+```csharp
+var yaml = "tags: [tag1, tag2, tag3]";
+var result = YamlDeserializer.Deserialize<MyClass>(yaml);
+
+// Serialize with flow style
+var settings = new YamlSerializerSettings { PreferFlowStyle = true };
+var output = YamlSerializer.Serialize(obj, settings);
+```
+
+### 6) Anchors and aliases
+
+Reuse values across your YAML document:
+
+```yaml
+defaults: &defaults
+  timeout: 30
+  retries: 3
+
+production:
+  <<: *defaults
+  host: prod.example.com
+
+development:
+  <<: *defaults
+  host: dev.example.com
+```
+
+```csharp
+var yaml = @"
+- &first item1
+- second
+- *first";
+
+var list = YamlDeserializer.Deserialize<List<string>>(yaml);
+// Result: ["item1", "second", "item1"]
+```
+
+### 7) Quoted strings and escape sequences
+
+Automatic quoting for special characters:
+
+```csharp
+var obj = new { Message = "Hello: World", Path = "C:\\Users" };
+var yaml = YamlSerializer.Serialize(obj);
+// Output: message: "Hello: World"
+//         path: "C:\\Users"
+```
+
+Supported escape sequences: `\\`, `\"`, `\n`, `\r`, `\t`, `\0`, `\a`, `\b`, `\f`, `\v`
+
+## 📖 Documentation
+
+For comprehensive documentation, see the [User Guide](../../docs/Cortex.Serialization.Yaml.md).
 
 
 ## 💬 Contributing

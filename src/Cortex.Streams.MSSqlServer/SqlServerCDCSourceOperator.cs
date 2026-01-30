@@ -2,6 +2,7 @@
 using Cortex.Streams.Operators;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -40,7 +41,7 @@ namespace Cortex.Streams.MSSqlServer
         // Key to store the last emitted record's hash
         private readonly string _lastRecordHashKey;
 
-        // Optional logger (may be null)
+        // Logger
         private readonly ILogger<SqlServerCDCSourceOperator> _logger;
 
         /// <summary>
@@ -87,8 +88,8 @@ namespace Cortex.Streams.MSSqlServer
             // A unique key to store the last emitted record's hash
             _lastRecordHashKey = $"{_schemaName}.{_tableName}.CDC.LAST_HASH";
 
-            // Store the logger (can be null)
-            _logger = logger;
+            // Store the logger
+            _logger = logger ?? NullLogger<SqlServerCDCSourceOperator>.Instance;
         }
 
         /// <summary>
@@ -509,26 +510,12 @@ namespace Cortex.Streams.MSSqlServer
 
         private void LogInformation(string message)
         {
-            if (_logger != null)
-            {
-                _logger.LogInformation(message);
-            }
-            else
-            {
-                Console.WriteLine(message);
-            }
+            _logger.LogInformation(message);
         }
 
         private void LogError(string message, Exception ex)
         {
-            if (_logger != null)
-            {
-                _logger.LogError(ex, message);
-            }
-            else
-            {
-                Console.WriteLine($"ERROR: {message}\n{ex}");
-            }
+            _logger.LogError(ex, message);
         }
 
         #endregion

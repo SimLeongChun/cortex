@@ -47,6 +47,9 @@
 - **Cortex.Streams:** Core streaming capabilities for building data pipelines.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Streams?label=Cortex.Streams)](https://www.nuget.org/packages/Cortex.Streams)
 
+- **Cortex.Streams.Mediator:** Integration of Cortex Streaming with Cortex Mediator
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.Streams.Mediator?label=Cortex.Streams.Mediator)](https://www.nuget.org/packages/Cortex.Streams.Mediator)
+
 - **Cortex.Streams.Kafka:** Integration with Apache Kafka for robust data streaming.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Streams.Kafka?label=Cortex.Streams.Kafka)](https://www.nuget.org/packages/Cortex.Streams.Kafka)
 
@@ -111,6 +114,9 @@
 - **Cortex.States.SQLite:** Persistent state storage using SQLite.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.States.SQLite?label=Cortex.States.SQLite)](https://www.nuget.org/packages/Cortex.States.SQLite)
 
+- **Cortex.States.DuckDb:** Persistent state storage using DuckDb.
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.States.DuckDb?label=Cortex.States.DuckDb)](https://www.nuget.org/packages/Cortex.States.DuckDb)
+
 - **Cortex.Telemetry:** Core library to add support for Tracing and Matrics.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Telemetry?label=Cortex.Telemetry)](https://www.nuget.org/packages/Cortex.Telemetry)
 
@@ -126,8 +132,14 @@
 - **Cortex.Mediator.Behaviors.FluentValidation:** implementation of the FluentValidation validation for Commands and Queries
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Mediator.Behaviors.FluentValidation?label=Cortex.Mediator.Behaviors.FluentValidation)](https://www.nuget.org/packages/Cortex.Mediator.Behaviors.FluentValidation)
 
+- **Cortex.Mediator.Behaviors.Transactional:** implementation of the Transactional Behaviors for Commands
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.Mediator.Behaviors.Transactional?label=Cortex.Mediator.Behaviors.Transactional)](https://www.nuget.org/packages/Cortex.Mediator.Behaviors.Transactional)
+
 - **Cortex.Vectors:** is a High‑performance vector types—Dense, Sparse, and Bit—for AI.
 [![NuGet Version](https://img.shields.io/nuget/v/Cortex.Vectors?label=Cortex.Vectors)](https://www.nuget.org/packages/Cortex.Vectors)
+
+- **Cortex.Serialization.Yaml:** is a High‑performance data serializer for Yaml
+[![NuGet Version](https://img.shields.io/nuget/v/Cortex.Vectors?label=Cortex.Serialization.Yaml)](https://www.nuget.org/packages/Cortex.Serialization.Yaml)
 
 
 ## Getting Started
@@ -175,7 +187,8 @@ Cortex Data Framework makes it easy to set up and run real-time data processing 
 ### 1. Creating a Stream
 
 ```csharp
-var stream = StreamBuilder<int, int>.CreateNewStream("ExampleStream")
+var stream = StreamBuilder<int>.CreateNewStream("ExampleStream")
+    .Stream()
     .Map(x => x * 2)
     .Filter(x => x > 10)
     .Sink(Console.WriteLine)
@@ -197,9 +210,10 @@ Console.WriteLine(stateStore.Get("key1"));
 
 ```csharp
 var telemetryProvider = new OpenTelemetryProvider();
-var stream = StreamBuilder<int, int>
+var stream = StreamBuilder<int>
     .CreateNewStream("TelemetryStream")
     .WithTelemetry(telemetryProvider)
+    .Stream()
     .Map(x => x * 2)
     .Sink(Console.WriteLine)
     .Build();
@@ -233,7 +247,7 @@ public class ClickEvent
         static void Main(string[] args)
         {
             // Build the stream
-            var stream = StreamBuilder<ClickEvent, ClickEvent>.CreateNewStream("ClickStream")
+            var stream = StreamBuilder<ClickEvent>.CreateNewStream("ClickStream")
                 .Stream()
                 .Filter(e => !string.IsNullOrEmpty(e.PageUrl))
                 .GroupBySilently(

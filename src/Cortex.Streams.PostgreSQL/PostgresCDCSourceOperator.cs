@@ -2,6 +2,7 @@
 using Cortex.Streams.Operators;
 using Npgsql;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -91,8 +92,8 @@ namespace Cortex.Streams.PostgreSQL
             _slotName = slotName;
             _publicationName = publicationName;
 
-            // Store logger (can be null)
-            _logger = logger;
+            // Store logger with NullLogger fallback
+            _logger = logger ?? NullLogger<PostgresSourceOperator>.Instance;
         }
 
         /// <summary>
@@ -461,38 +462,16 @@ namespace Cortex.Streams.PostgreSQL
         }
 
         // --------------------------------------------------------------------
-        // LOGGING HELPERS: If _logger is null, we fall back to Console.WriteLine
+        // LOGGING HELPERS
         // --------------------------------------------------------------------
         private void LogInformation(string message)
         {
-            if (_logger != null)
-            {
-                _logger.LogInformation(message);
-            }
-            else
-            {
-                Console.WriteLine(message);
-            }
+            _logger.LogInformation(message);
         }
 
         private void LogError(string message, Exception ex = null)
         {
-            if (_logger != null)
-            {
-                _logger.LogError(ex, message);
-            }
-            else
-            {
-                // Log with exception details on console if present
-                if (ex != null)
-                {
-                    Console.WriteLine($"ERROR: {message}\n{ex}");
-                }
-                else
-                {
-                    Console.WriteLine($"ERROR: {message}");
-                }
-            }
+            _logger.LogError(ex, message);
         }
     }
 }

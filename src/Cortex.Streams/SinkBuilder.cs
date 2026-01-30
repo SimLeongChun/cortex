@@ -1,5 +1,7 @@
 ﻿using Cortex.Streams.Abstractions;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Performance;
 using Cortex.Telemetry;
 using System.Collections.Generic;
 
@@ -16,13 +18,25 @@ namespace Cortex.Streams
         private readonly IOperator _firstOperator;
         private readonly List<BranchOperator<TCurrent>> _branchOperators;
         private readonly ITelemetryProvider _telemetryProvider;
+        private readonly StreamExecutionOptions _executionOptions;
+        private readonly StreamPerformanceOptions _performanceOptions;
 
-        public SinkBuilder(string name, IOperator firstOperator, List<BranchOperator<TCurrent>> branchOperators, ITelemetryProvider telemetryProvider)
+
+        public SinkBuilder(
+            string name,
+            IOperator firstOperator,
+            List<BranchOperator<TCurrent>> branchOperators,
+            ITelemetryProvider telemetryProvider,
+            StreamExecutionOptions executionOptions,
+            StreamPerformanceOptions performanceOptions = null)
+
         {
             _name = name;
             _firstOperator = firstOperator;
             _branchOperators = branchOperators;
             _telemetryProvider = telemetryProvider;
+            _executionOptions = executionOptions;
+            _performanceOptions = performanceOptions ?? StreamPerformanceOptions.Default;
         }
 
         /// <summary>
@@ -31,7 +45,7 @@ namespace Cortex.Streams
         /// <returns>A stream instance.</returns>
         public IStream<TIn, TCurrent> Build()
         {
-            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider);
+            return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions, _performanceOptions);
         }
     }
 }

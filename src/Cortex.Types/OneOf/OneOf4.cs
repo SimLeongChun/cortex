@@ -136,7 +136,7 @@ namespace Cortex.Types
                           Equals(_value, other._value);
 
         public override bool Equals(object obj) =>
-            obj is OneOf<T1, T2> other && Equals(other);
+            obj is OneOf<T1, T2, T3, T4> other && Equals(other);
 
         public override int GetHashCode() =>
             HashCode.Combine(_value, _typeIndex);

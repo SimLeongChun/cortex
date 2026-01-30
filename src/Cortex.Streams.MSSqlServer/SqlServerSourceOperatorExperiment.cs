@@ -1,6 +1,8 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Operators;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -40,12 +42,16 @@ namespace Cortex.Streams.MSSqlServer
         // Key to store the last emitted record's hash
         private readonly string _lastRecordHashKey;
 
+        // Logger
+        private readonly ILogger<SqlServerSourceOperatorExperiment> _logger;
+
         public SqlServerSourceOperatorExperiment(
             string connectionString,
             string schemaName,
             string tableName,
             SqlServerSettings sqlServerSettings = null,
-            IDataStore<string, byte[]> checkpointStore = null)
+            IDataStore<string, byte[]> checkpointStore = null,
+            ILogger<SqlServerSourceOperatorExperiment> logger = null)
         {
             _connectionString = connectionString;
             _schemaName = schemaName;
@@ -69,6 +75,8 @@ namespace Cortex.Streams.MSSqlServer
 
             // A unique key to store the last emitted record's hash
             _lastRecordHashKey = $"{_schemaName}.{_tableName}.CDC.LAST_HASH";
+
+            _logger = logger ?? NullLogger<SqlServerSourceOperatorExperiment>.Instance;
         }
 
         public void Start(Action<SqlServerRecord> emit)
@@ -88,16 +96,16 @@ namespace Cortex.Streams.MSSqlServer
             // 1. If doInitialLoad = true and we haven't done it yet, run initial load
             if (_doInitialLoad && _checkpointStore.Get(_initialLoadCheckpointKey) == null)
             {
-                Console.WriteLine("Starting one-time initial load...");
+                _logger.LogInformation("Starting one-time initial load for {Schema}.{Table}", _schemaName, _tableName);
                 RunInitialLoad(emit);
 
                 // Mark initial load as completed
                 _checkpointStore.Put(_initialLoadCheckpointKey, new byte[] { 0x01 });
-                Console.WriteLine("Initial load completed.");
+                _logger.LogInformation("Initial load completed for {Schema}.{Table}", _schemaName, _tableName);
             }
             else
             {
-                Console.WriteLine("Skipping initial load (already done or disabled).");
+                _logger.LogDebug("Skipping initial load for {Schema}.{Table} (already done or disabled)", _schemaName, _tableName);
             }
 
             // 2. Initialize the LSN checkpoint if we don’t already have one
@@ -189,7 +197,7 @@ namespace Cortex.Streams.MSSqlServer
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error in CDC polling: {ex}");
+                    _logger.LogError(ex, "Error in CDC polling for {Schema}.{Table}", _schemaName, _tableName);
                     Thread.Sleep(5000);
                 }
             }
@@ -298,7 +306,7 @@ namespace Cortex.Streams.MSSqlServer
                 ";
                 cmd.ExecuteNonQuery();
 
-                Console.WriteLine($"CDC enabled for table [{_schemaName}].[{_tableName}].");
+                _logger.LogInformation("CDC enabled for table [{Schema}].[{Table}]", _schemaName, _tableName);
             }
         }
 
@@ -319,7 +327,7 @@ namespace Cortex.Streams.MSSqlServer
 
                 elapsed += 500;
             }
-            Console.WriteLine($"Warning: capture instance '{captureInstanceName}' not found within {timeoutMs} ms.");
+            _logger.LogWarning("Capture instance '{CaptureInstance}' not found within {TimeoutMs} ms", captureInstanceName, timeoutMs);
         }
 
         private bool CaptureInstanceExists(string captureInstanceName)

@@ -36,7 +36,7 @@ namespace Cortex.Streams.Tests
             mapOperator.SetNext(sinkOperator);
 
             // Act & Assert
-            Assert.Throws<ArgumentNullException>(() => mapOperator.Process(input));
+            Assert.Throws<ArgumentException>(() => mapOperator.Process(input));
         }
 
 
@@ -62,7 +62,7 @@ namespace Cortex.Streams.Tests
             var mapOperator = new MapOperator<int, string>(x => $"Number: {x}");
 
             // Act & Assert
-            Assert.Throws<InvalidCastException>(() => mapOperator.Process("invalid"));
+            Assert.Throws<ArgumentException>(() => mapOperator.Process("invalid"));
         }
     }
 }

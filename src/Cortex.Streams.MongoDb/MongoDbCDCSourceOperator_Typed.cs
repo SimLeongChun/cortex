@@ -1,5 +1,6 @@
 ﻿using Cortex.Streams.Operators;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using MongoDB.Bson.Serialization;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -43,7 +44,7 @@ namespace Cortex.Streams.MongoDb
         private bool _stopRequested;
         private bool _disposed;
 
-        // Optional logger
+        // Logger
         private readonly ILogger<MongoDbCDCSourceOperator<T>> _logger;
 
         public MongoDbCDCSourceOperator(
@@ -72,7 +73,7 @@ namespace Cortex.Streams.MongoDb
             _initialLoadCheckpointKey = $"{dbName}.{collectionName}.INITIAL_LOAD_DONE";
             _lastRecordHashKey = $"{dbName}.{collectionName}.CDC.LAST_HASH";
 
-            _logger = logger;
+            _logger = logger ?? NullLogger<MongoDbCDCSourceOperator<T>>.Instance;
         }
 
         /// <summary>
@@ -334,24 +335,12 @@ namespace Cortex.Streams.MongoDb
         // --------------------------------------------------------------------
         private void LogInformation(string message)
         {
-            if (_logger != null)
-                _logger?.LogInformation(message);
-            else
-                Console.WriteLine(message);
+            _logger.LogInformation(message);
         }
 
         private void LogError(string message, Exception ex = null)
         {
-            if (_logger != null)
-            {
-                _logger.LogError(ex, message);
-            }
-            else
-            {
-                Console.WriteLine(ex != null
-                    ? $"ERROR: {message}\n{ex}"
-                    : $"ERROR: {message}");
-            }
+            _logger.LogError(ex, message);
         }
     }
 }

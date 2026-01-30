@@ -1,34 +1,47 @@
 ﻿using Azure.Storage.Blobs;
+using Azure.Storage.Blobs.Models;
 using Cortex.Streams.AzureBlobStorage.Serializers;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
-using Polly;
-using Polly.Retry;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 
 namespace Cortex.Streams.AzureBlobStorage
 {
-    public class AzureBlobStorageBulkSinkOperator<TInput> : ISinkOperator<TInput>, IDisposable
+    /// <summary>
+    /// Azure Blob Storage Bulk Sink Operator that batches and writes serialized data to a blob container.
+    /// Implements IErrorHandlingEnabled to participate in stream-level error handling.
+    /// </summary>
+    /// <typeparam name="TInput">The type of objects to send.</typeparam>
+    public class AzureBlobStorageBulkSinkOperator<TInput> : ISinkOperator<TInput>, IErrorHandlingEnabled, IDisposable
     {
+        private static readonly string OperatorName = $"AzureBlobStorageBulkSinkOperator<{typeof(TInput).Name}>";
+
         private readonly string _connectionString;
         private readonly string _containerName;
         private readonly string _directoryPath;
         private readonly ISerializer<TInput> _serializer;
         private readonly BlobContainerClient _containerClient;
+        private readonly ILogger<AzureBlobStorageBulkSinkOperator<TInput>> _logger;
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
         private bool _isRunning;
+        private bool _disposed;
 
         // For batching
         private readonly List<TInput> _buffer = new List<TInput>();
         private readonly int _batchSize;
         private readonly TimeSpan _flushInterval;
-        private readonly Timer _timer;
-        private readonly AsyncRetryPolicy _retryPolicy;
+        private Timer _timer;
+        private readonly object _bufferLock = new object();
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="AzureBlobStorageSinkOperator{TInput}"/> class.
+        /// Initializes a new instance of the <see cref="AzureBlobStorageBulkSinkOperator{TInput}"/> class.
         /// </summary>
         /// <param name="connectionString">Azure Blob Storage connection string.</param>
         /// <param name="containerName">Name of the Blob container.</param>
@@ -36,33 +49,33 @@ namespace Cortex.Streams.AzureBlobStorage
         /// <param name="serializer">Serializer to convert TInput objects to strings.</param>
         /// <param name="batchSize">Number of messages to batch before uploading.</param>
         /// <param name="flushInterval">Time interval to flush the buffer regardless of batch size.</param>
+        /// <param name="logger">Optional logger for diagnostic output.</param>
         public AzureBlobStorageBulkSinkOperator(
             string connectionString,
             string containerName,
             string directoryPath,
-            ISerializer<TInput> serializer,
+            ISerializer<TInput> serializer = null,
             int batchSize = 100,
-            TimeSpan? flushInterval = null)
+            TimeSpan? flushInterval = null,
+            ILogger<AzureBlobStorageBulkSinkOperator<TInput>>? logger = null)
         {
             _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
             _containerName = containerName ?? throw new ArgumentNullException(nameof(containerName));
             _directoryPath = directoryPath ?? throw new ArgumentNullException(nameof(directoryPath));
-            _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+            _serializer = serializer ?? new DefaultJsonSerializer<TInput>();
             _batchSize = batchSize;
             _flushInterval = flushInterval ?? TimeSpan.FromSeconds(10);
+            _logger = logger ?? NullLogger<AzureBlobStorageBulkSinkOperator<TInput>>.Instance;
 
             _containerClient = new BlobContainerClient(_connectionString, _containerName);
-            _retryPolicy = Policy
-                .Handle<Exception>()
-                .WaitAndRetryAsync(
-                    retryCount: 3,
-                    sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-                    onRetry: (exception, timeSpan, retryCount, context) =>
-                    {
-                        Console.WriteLine($"Retry {retryCount} after {timeSpan} due to {exception.Message}");
-                    });
+        }
 
-            _timer = new Timer(async _ => await FlushBufferAsync(), null, _flushInterval, _flushInterval);
+        /// <summary>
+        /// Sets the stream-level error handling options.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
         }
 
         /// <summary>
@@ -70,102 +83,119 @@ namespace Cortex.Streams.AzureBlobStorage
         /// </summary>
         public void Start()
         {
-            if (_isRunning) throw new InvalidOperationException("AzureBlobStorageSinkOperator is already running.");
+            if (_disposed) throw new ObjectDisposedException(nameof(AzureBlobStorageBulkSinkOperator<TInput>));
+            if (_isRunning) return;
 
             _containerClient.CreateIfNotExists();
+            _timer = new Timer(_ => FlushBuffer(), null, _flushInterval, _flushInterval);
             _isRunning = true;
+            _logger.LogInformation("AzureBlobStorageBulkSinkOperator started for container '{ContainerName}'", _containerName);
         }
 
         /// <summary>
         /// Processes the input object by adding it to the buffer.
+        /// Uses stream-level error handling configured via IErrorHandlingEnabled.
         /// </summary>
         /// <param name="input">The input object to send.</param>
         public void Process(TInput input)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(AzureBlobStorageBulkSinkOperator<TInput>));
             if (!_isRunning)
             {
-                Console.WriteLine("AzureBlobStorageSinkOperator is not running. Call Start() before processing messages.");
+                _logger.LogWarning("AzureBlobStorageBulkSinkOperator is not running. Call Start() before processing messages");
                 return;
             }
 
             if (input == null)
             {
-                Console.WriteLine("AzureBlobStorageSinkOperator received null input. Skipping.");
+                _logger.LogDebug("AzureBlobStorageBulkSinkOperator received null input. Skipping");
                 return;
             }
 
-            lock (_buffer)
+            List<TInput> batchToUpload = null;
+
+            lock (_bufferLock)
             {
                 _buffer.Add(input);
                 if (_buffer.Count >= _batchSize)
                 {
-                    var batch = new List<TInput>(_buffer);
+                    batchToUpload = new List<TInput>(_buffer);
                     _buffer.Clear();
-                    Task.Run(() => SendBatchAsync(batch));
                 }
+            }
+
+            if (batchToUpload != null)
+            {
+                ErrorHandlingHelper.TryExecute(
+                    _executionOptions,
+                    OperatorName,
+                    batchToUpload,
+                    (Action<List<TInput>>)UploadBatchToBlob);
             }
         }
 
-        /// <summary>
-        /// Stops the sink operator by flushing the buffer and disposing resources.
-        /// </summary>
-        public void Stop()
+        private void FlushBuffer()
         {
-            if (!_isRunning) return;
+            List<TInput> batchToUpload = null;
 
-            _timer.Dispose();
-            FlushBufferAsync().Wait();
-            Dispose();
-            _isRunning = false;
-            Console.WriteLine("AzureBlobStorageSinkOperator stopped.");
-        }
-
-        /// <summary>
-        /// Sends a batch of serialized messages to Azure Blob Storage asynchronously.
-        /// </summary>
-        /// <param name="batch">The batch of input objects to send.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        private async Task SendBatchAsync(List<TInput> batch)
-        {
-            var serializedBatch = string.Join(Environment.NewLine, batch.Select(obj => _serializer.Serialize(obj)));
-            var fileName = $"{Guid.NewGuid()}.jsonl"; // JSON Lines format
-            var blobName = $"{_directoryPath}/{fileName}";
-            var blobClient = _containerClient.GetBlobClient(blobName);
-
-            await _retryPolicy.ExecuteAsync(async () =>
-            {
-                using var stream = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(serializedBatch));
-                await blobClient.UploadAsync(stream, new Azure.Storage.Blobs.Models.BlobHttpHeaders { ContentType = "application/jsonl" });
-            });
-        }
-
-        /// <summary>
-        /// Flushes the buffer by sending any remaining messages as a batch.
-        /// </summary>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        private async Task FlushBufferAsync()
-        {
-            List<TInput> batch = null;
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 if (_buffer.Count > 0)
                 {
-                    batch = new List<TInput>(_buffer);
+                    batchToUpload = new List<TInput>(_buffer);
                     _buffer.Clear();
                 }
             }
 
-            if (batch != null && batch.Count > 0)
+            if (batchToUpload != null)
             {
-                await SendBatchAsync(batch);
+                try
+                {
+                    ErrorHandlingHelper.TryExecute(
+                        _executionOptions,
+                        OperatorName,
+                        batchToUpload,
+                        (Action<List<TInput>>)UploadBatchToBlob);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error during scheduled flush to Azure Blob Storage container '{ContainerName}'", _containerName);
+                }
             }
         }
 
+        private void UploadBatchToBlob(List<TInput> batch)
+        {
+            var serializedBatch = string.Join(Environment.NewLine, batch.Select(obj => _serializer.Serialize(obj)));
+            var fileName = $"{Guid.NewGuid()}.jsonl";
+            var blobName = $"{_directoryPath}/{fileName}";
+            var blobClient = _containerClient.GetBlobClient(blobName);
+
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(serializedBatch));
+            blobClient.Upload(stream, new BlobHttpHeaders { ContentType = "application/jsonl" });
+            _logger.LogDebug("Uploaded batch of {Count} items to Azure Blob Storage: {BlobName}", batch.Count, blobName);
+        }
+
         /// <summary>
-        /// Disposes the Blob container client and timer.
+        /// Stops the sink operator by flushing the buffer.
+        /// </summary>
+        public void Stop()
+        {
+            if (!_isRunning || _disposed) return;
+
+            _isRunning = false;
+            FlushBuffer();
+            _logger.LogInformation("AzureBlobStorageBulkSinkOperator stopped for container '{ContainerName}'", _containerName);
+        }
+
+        /// <summary>
+        /// Disposes the resources.
         /// </summary>
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             _timer?.Dispose();
         }
     }
