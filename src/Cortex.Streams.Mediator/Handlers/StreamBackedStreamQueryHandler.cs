@@ -17,7 +17,7 @@ namespace Cortex.Streams.Mediator.Handlers
     public abstract class StreamBackedStreamQueryHandler<TQuery, TResult> : IStreamQueryHandler<TQuery, TResult>
         where TQuery : IStreamQuery<TResult>
     {
-        private readonly IStream<TResult, TResult> _stream;
+        private readonly IStream<TResult> _stream;
         private readonly int _channelCapacity;
 
         /// <summary>
@@ -25,7 +25,7 @@ namespace Cortex.Streams.Mediator.Handlers
         /// </summary>
         /// <param name="stream">The Cortex Stream to read data from.</param>
         /// <param name="channelCapacity">The capacity of the internal channel buffer. Default is 100.</param>
-        protected StreamBackedStreamQueryHandler(IStream<TResult, TResult> stream, int channelCapacity = 100)
+        protected StreamBackedStreamQueryHandler(IStream<TResult> stream, int channelCapacity = 100)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
             _channelCapacity = channelCapacity;

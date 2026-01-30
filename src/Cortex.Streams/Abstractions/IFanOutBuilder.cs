@@ -126,6 +126,6 @@ namespace Cortex.Streams.Abstractions
         /// </summary>
         /// <returns>The built stream instance ready to be started.</returns>
         /// <exception cref="InvalidOperationException">Thrown when no sinks have been configured.</exception>
-        IStream<TIn, TCurrent> Build();
+        IStream<TIn> Build();
     }
 }

@@ -1,4 +1,5 @@
-﻿using Cortex.Streams.ErrorHandling;
+﻿using Cortex.Streams.Abstractions;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
@@ -10,7 +11,7 @@ namespace Cortex.Streams.Operators
     /// Represents a branch in a fan-out pattern that processes data independently.
     /// Forwards telemetry and error handling configuration to the branch's operator chain.
     /// </summary>
-    public class BranchOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
+    public class BranchOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled, IBranchInfo
     {
         private readonly string _branchName;
         private readonly IOperator _branchOperator;

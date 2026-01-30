@@ -166,7 +166,7 @@ namespace Cortex.Streams
         }
 
         /// <inheritdoc />
-        public IStream<TIn, TCurrent> Build()
+        public IStream<TIn> Build()
         {
             if (_branchOperators.Count == 0)
             {
