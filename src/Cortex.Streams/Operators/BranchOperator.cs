@@ -1,11 +1,16 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace Cortex.Streams.Operators
 {
-    public class BranchOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled
+    /// <summary>
+    /// Represents a branch in a fan-out pattern that processes data independently.
+    /// Forwards telemetry and error handling configuration to the branch's operator chain.
+    /// </summary>
+    public class BranchOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly string _branchName;
         private readonly IOperator _branchOperator;
@@ -55,6 +60,18 @@ namespace Cortex.Streams.Operators
             if (_branchOperator is ITelemetryEnabled telemetryEnabled)
             {
                 telemetryEnabled.SetTelemetryProvider(telemetryProvider);
+            }
+        }
+
+        /// <summary>
+        /// Forwards error handling configuration to the branch's operator chain.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            // Forward error handling to the branch operator if it supports it
+            if (_branchOperator is IErrorHandlingEnabled errorHandlingEnabled)
+            {
+                errorHandlingEnabled.SetErrorHandling(options);
             }
         }
 

@@ -33,6 +33,9 @@ namespace Cortex.Streams.ErrorHandling
         /// </summary>
         internal string StreamName { get; set; }
 
-        internal static readonly StreamExecutionOptions Default = new StreamExecutionOptions();
+        /// <summary>
+        /// Default execution options with no error handling configured.
+        /// </summary>
+        public static readonly StreamExecutionOptions Default = new StreamExecutionOptions();
     }
 }

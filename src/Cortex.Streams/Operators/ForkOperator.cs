@@ -1,11 +1,16 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace Cortex.Streams.Operators
 {
-    internal class ForkOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled
+    /// <summary>
+    /// Operator that splits the stream into multiple branches for fan-out processing.
+    /// Forwards telemetry and error handling configuration to all branches.
+    /// </summary>
+    internal class ForkOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Dictionary<string, BranchOperator<T>> _branches = new Dictionary<string, BranchOperator<T>>();
         private IOperator _continuationOperator;
@@ -17,6 +22,9 @@ namespace Cortex.Streams.Operators
         private ITracer _tracer;
         private Action _incrementProcessedCounter;
         private Action<double> _recordProcessingTime;
+
+        // Error handling
+        private StreamExecutionOptions _executionOptions;
 
         public void SetTelemetryProvider(ITelemetryProvider telemetryProvider)
         {
@@ -55,6 +63,29 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        /// <summary>
+        /// Forwards error handling configuration to all branches and the continuation operator.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options;
+
+            // Forward error handling to all branches
+            foreach (var branch in _branches.Values)
+            {
+                if (branch is IErrorHandlingEnabled errorHandlingEnabled)
+                {
+                    errorHandlingEnabled.SetErrorHandling(options);
+                }
+            }
+
+            // Forward error handling to the continuation operator
+            if (_continuationOperator is IErrorHandlingEnabled continuationErrorHandlingEnabled)
+            {
+                continuationErrorHandlingEnabled.SetErrorHandling(options);
+            }
+        }
+
         public void AddBranch(string name, BranchOperator<T> branchOperator)
         {
             if (string.IsNullOrEmpty(name))
@@ -68,6 +99,12 @@ namespace Cortex.Streams.Operators
             if (_telemetryProvider != null && branchOperator is ITelemetryEnabled telemetryEnabled)
             {
                 telemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
+
+            // Propagate error handling to the new branch if already configured
+            if (_executionOptions != null && branchOperator is IErrorHandlingEnabled errorHandlingEnabled)
+            {
+                errorHandlingEnabled.SetErrorHandling(_executionOptions);
             }
         }
 
