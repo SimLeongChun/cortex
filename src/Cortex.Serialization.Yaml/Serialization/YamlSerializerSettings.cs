@@ -220,6 +220,63 @@ namespace Cortex.Serialization.Yaml
         public int Indentation { get; init; } = 2;
 
         /// <summary>
+        /// Gets or sets a value indicating whether to prefer flow style for collections.
+        /// </summary>
+        /// <value>
+        /// <c>true</c> to prefer flow style (inline) for simple collections; 
+        /// <c>false</c> to always use block style. Default is <c>false</c>.
+        /// </value>
+        /// <remarks>
+        /// <para>
+        /// When enabled, simple collections (sequences and mappings with only scalar values)
+        /// will be serialized using flow style (JSON-like syntax) when they fit within 
+        /// the <see cref="FlowStyleThreshold"/>.
+        /// </para>
+        /// </remarks>
+        /// <example>
+        /// With PreferFlowStyle = true:
+        /// <code>
+        /// tags: [tag1, tag2, tag3]
+        /// metadata: {key1: value1, key2: value2}
+        /// </code>
+        /// 
+        /// With PreferFlowStyle = false:
+        /// <code>
+        /// tags:
+        ///   - tag1
+        ///   - tag2
+        ///   - tag3
+        /// metadata:
+        ///   key1: value1
+        ///   key2: value2
+        /// </code>
+        /// </example>
+        public bool PreferFlowStyle { get; init; } = false;
+
+        /// <summary>
+        /// Gets or sets the maximum line length threshold for using flow style collections.
+        /// </summary>
+        /// <value>
+        /// The maximum estimated line length for flow style output. Default is 80 characters.
+        /// </value>
+        /// <remarks>
+        /// <para>
+        /// When <see cref="PreferFlowStyle"/> is true, collections will only use flow style
+        /// if their estimated output length is less than this threshold.
+        /// </para>
+        /// </remarks>
+        public int FlowStyleThreshold { get; init; } = 80;
+
+        /// <summary>
+        /// Gets or sets a value indicating whether to emit comments in the output.
+        /// </summary>
+        /// <value>
+        /// <c>true</c> to emit comments that were associated with nodes; <c>false</c> to omit them.
+        /// Default is <c>true</c>.
+        /// </value>
+        public bool EmitComments { get; init; } = true;
+
+        /// <summary>
         /// Gets the list of custom type converters used during serialization.
         /// </summary>
         /// <value>

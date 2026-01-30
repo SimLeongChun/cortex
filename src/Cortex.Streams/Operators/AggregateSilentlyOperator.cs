@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.States.Operators;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
@@ -7,12 +8,15 @@ using System.Diagnostics;
 
 namespace Cortex.Streams.Operators
 {
-    public class AggregateSilentlyOperator<TKey, TInput, TAggregate> : IOperator, IStatefulOperator, ITelemetryEnabled
+    public class AggregateSilentlyOperator<TKey, TInput, TAggregate> : IOperator, IStatefulOperator, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Func<TInput, TKey> _keySelector;
         private readonly Func<TAggregate, TInput, TAggregate> _aggregateFunction;
         private readonly IDataStore<TKey, TAggregate> _stateStore;
         private IOperator _nextOperator;
+
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
+
 
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
@@ -57,27 +61,68 @@ namespace Cortex.Streams.Operators
             }
         }
 
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
+        }
+
         public void Process(object input)
         {
+            TInput typedInput;
+            try
+            {
+                typedInput = (TInput)input;
+            }
+            catch (InvalidCastException)
+            {
+                throw new ArgumentException(
+                    $"Expected input of type {typeof(TInput).Name}, but received {input?.GetType().Name ?? "null"}");
+            }
+
+            var operatorName =
+                $"AggregateSilentlyOperator<{typeof(TKey).Name},{typeof(TInput).Name},{typeof(TAggregate).Name}>";
+
+            bool executedSuccessfully;
+            TKey key = default;
+            TAggregate aggregate = default;
+
             if (_telemetryProvider != null)
             {
                 var stopwatch = Stopwatch.StartNew();
 
-                using (var span = _tracer.StartSpan("AggregateOperator.Process"))
+                using (var span = _tracer.StartSpan("AggregateSilentlyOperator.Process"))
                 {
                     try
                     {
-                        var typedInput = (TInput)input;
-                        var key = _keySelector(typedInput);
-                        TAggregate aggregate;
-                        lock (_stateStore)
+                        executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, TAggregate>(
+                            _executionOptions,
+                            operatorName,
+                            input,
+                            current =>
+                            {
+                                key = _keySelector(current);
+                                lock (_stateStore)
+                                {
+                                    aggregate = _stateStore.Get(key);
+                                    aggregate = _aggregateFunction(aggregate, current);
+                                    _stateStore.Put(key, aggregate);
+                                }
+                                return aggregate;
+                            },
+                            typedInput,
+                            out _);
+
+                        if (executedSuccessfully)
                         {
-                            aggregate = _stateStore.Get(key);
-                            aggregate = _aggregateFunction(aggregate, typedInput);
-                            _stateStore.Put(key, aggregate);
+                            span.SetAttribute("key", key?.ToString());
                         }
-                        span.SetAttribute("key", key.ToString());
-                        span.SetAttribute("status", "success");
+
+                        span.SetAttribute("status", executedSuccessfully ? "success" : "skipped");
                     }
                     catch (Exception ex)
                     {
@@ -88,28 +133,37 @@ namespace Cortex.Streams.Operators
                     finally
                     {
                         stopwatch.Stop();
-                        _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                        _incrementProcessedCounter();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
             }
             else
             {
-                var typedInput = (TInput)input;
-                var key = _keySelector(typedInput);
-                lock (_stateStore)
-                {
-                    var aggregate = _stateStore.Get(key);
-                    aggregate = _aggregateFunction(aggregate, typedInput);
-                    _stateStore.Put(key, aggregate);
-                }
+                executedSuccessfully = ErrorHandlingHelper.TryExecute<TInput, TAggregate>(
+                    _executionOptions,
+                    operatorName,
+                    input,
+                    current =>
+                    {
+                        key = _keySelector(current);
+                        lock (_stateStore)
+                        {
+                            aggregate = _stateStore.Get(key);
+                            aggregate = _aggregateFunction(aggregate, current);
+                            _stateStore.Put(key, aggregate);
+                        }
+                        return aggregate;
+                    },
+                    typedInput,
+                    out _);
             }
 
-            // we should not return the value from the state, continue the process further, state is just used to mutate
-            // for now we are commenting the next Operator.
-            //_nextOperator?.Process(new KeyValuePair<TKey, TAggregate>(key, aggregate));
+            // If the error handling decided to Skip, do not forward the element.
+            if (!executedSuccessfully)
+                return;
 
-            // Continue processing
+            // Continue normal processing with original input
             _nextOperator?.Process(input);
         }
 
@@ -121,6 +175,11 @@ namespace Cortex.Streams.Operators
             if (_nextOperator is ITelemetryEnabled nextTelemetryEnabled && _telemetryProvider != null)
             {
                 nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
+
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
             }
         }
 

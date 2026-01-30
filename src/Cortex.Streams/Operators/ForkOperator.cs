@@ -1,11 +1,90 @@
-﻿using System;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace Cortex.Streams.Operators
 {
-    internal class ForkOperator<T> : IOperator, IHasNextOperators
+    /// <summary>
+    /// Operator that splits the stream into multiple branches for fan-out processing.
+    /// Forwards telemetry and error handling configuration to all branches.
+    /// </summary>
+    internal class ForkOperator<T> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly Dictionary<string, BranchOperator<T>> _branches = new Dictionary<string, BranchOperator<T>>();
+        private IOperator _continuationOperator;
+
+        // Telemetry fields
+        private ITelemetryProvider _telemetryProvider;
+        private ICounter _processedCounter;
+        private IHistogram _processingTimeHistogram;
+        private ITracer _tracer;
+        private Action _incrementProcessedCounter;
+        private Action<double> _recordProcessingTime;
+
+        // Error handling
+        private StreamExecutionOptions _executionOptions;
+
+        public void SetTelemetryProvider(ITelemetryProvider telemetryProvider)
+        {
+            _telemetryProvider = telemetryProvider;
+
+            if (_telemetryProvider != null)
+            {
+                var metricsProvider = _telemetryProvider.GetMetricsProvider();
+                _processedCounter = metricsProvider.CreateCounter($"fork_operator_processed_{typeof(T).Name}", "Number of items processed by ForkOperator");
+                _processingTimeHistogram = metricsProvider.CreateHistogram($"fork_operator_processing_time_{typeof(T).Name}", "Processing time for ForkOperator");
+                _tracer = _telemetryProvider.GetTracingProvider().GetTracer($"ForkOperator_{typeof(T).Name}");
+
+                // Cache delegates
+                _incrementProcessedCounter = () => _processedCounter.Increment();
+                _recordProcessingTime = value => _processingTimeHistogram.Record(value);
+            }
+            else
+            {
+                _incrementProcessedCounter = null;
+                _recordProcessingTime = null;
+            }
+
+            // Propagate telemetry to all branches
+            foreach (var branch in _branches.Values)
+            {
+                if (branch is ITelemetryEnabled telemetryEnabled)
+                {
+                    telemetryEnabled.SetTelemetryProvider(telemetryProvider);
+                }
+            }
+
+            // Propagate telemetry to the continuation operator
+            if (_continuationOperator is ITelemetryEnabled continuationTelemetryEnabled)
+            {
+                continuationTelemetryEnabled.SetTelemetryProvider(telemetryProvider);
+            }
+        }
+
+        /// <summary>
+        /// Forwards error handling configuration to all branches and the continuation operator.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options;
+
+            // Forward error handling to all branches
+            foreach (var branch in _branches.Values)
+            {
+                if (branch is IErrorHandlingEnabled errorHandlingEnabled)
+                {
+                    errorHandlingEnabled.SetErrorHandling(options);
+                }
+            }
+
+            // Forward error handling to the continuation operator
+            if (_continuationOperator is IErrorHandlingEnabled continuationErrorHandlingEnabled)
+            {
+                continuationErrorHandlingEnabled.SetErrorHandling(options);
+            }
+        }
 
         public void AddBranch(string name, BranchOperator<T> branchOperator)
         {
@@ -15,24 +94,89 @@ namespace Cortex.Streams.Operators
                 throw new ArgumentNullException(nameof(branchOperator));
 
             _branches[name] = branchOperator;
+
+            // Propagate telemetry to the new branch if already configured
+            if (_telemetryProvider != null && branchOperator is ITelemetryEnabled telemetryEnabled)
+            {
+                telemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
+
+            // Propagate error handling to the new branch if already configured
+            if (_executionOptions != null && branchOperator is IErrorHandlingEnabled errorHandlingEnabled)
+            {
+                errorHandlingEnabled.SetErrorHandling(_executionOptions);
+            }
         }
 
         public void Process(object input)
         {
-            foreach (var branch in _branches.Values)
+            if (_telemetryProvider != null)
             {
-                branch.Process(input);
+                var stopwatch = Stopwatch.StartNew();
+
+                using (var span = _tracer.StartSpan("ForkOperator.Process"))
+                {
+                    try
+                    {
+                        span.SetAttribute("branch_count", _branches.Count.ToString());
+                        foreach (var branch in _branches.Values)
+                        {
+                            branch.Process(input);
+                        }
+
+                        // Process continuation operator after branches
+                        _continuationOperator?.Process(input);
+
+                        span.SetAttribute("status", "success");
+                    }
+                    catch (Exception ex)
+                    {
+                        span.SetAttribute("status", "error");
+                        span.SetAttribute("exception", ex.ToString());
+                        throw;
+                    }
+                    finally
+                    {
+                        stopwatch.Stop();
+                        _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter();
+                    }
+                }
+            }
+            else
+            {
+                foreach (var branch in _branches.Values)
+                {
+                    branch.Process(input);
+                }
+
+                // Process continuation operator after branches
+                _continuationOperator?.Process(input);
             }
         }
 
         public void SetNext(IOperator nextOperator)
         {
-            throw new InvalidOperationException("Cannot set next operator on a ForkOperator.");
+            _continuationOperator = nextOperator;
+
+            // Propagate telemetry to the new continuation operator if already configured
+            if (_telemetryProvider != null && nextOperator is ITelemetryEnabled telemetryEnabled)
+            {
+                telemetryEnabled.SetTelemetryProvider(_telemetryProvider);
+            }
         }
 
         public IEnumerable<IOperator> GetNextOperators()
         {
-            return _branches.Values;
+            foreach (var branch in _branches.Values)
+            {
+                yield return branch;
+            }
+
+            if (_continuationOperator != null)
+            {
+                yield return _continuationOperator;
+            }
         }
 
         public IReadOnlyDictionary<string, BranchOperator<T>> Branches => _branches;

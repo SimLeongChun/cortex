@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.Streams.Operators;
+using Cortex.Streams.Performance;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,20 +20,49 @@ namespace Cortex.Streams
         void Stop();
 
         /// <summary>
+        /// Stops the stream processing asynchronously, waiting for any buffered items to be processed.
+        /// </summary>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the graceful shutdown.</param>
+        /// <returns>A task that represents the asynchronous stop operation.</returns>
+        Task StopAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Processes the specified input value and emits it to the underlying stream.
+        /// This method blocks until the entire pipeline has finished processing the item.
         /// </summary>
         /// <param name="value">The input value to be emitted. The meaning and requirements of this value depend on the implementation.</param>
         void Emit(TIn value);
 
-        // feature #102: Support async emit with cancellation token
-
         /// <summary>
         /// Asynchronously emits the specified value to the underlying stream.
+        /// When buffered processing is enabled via <see cref="StreamPerformanceOptions"/>, 
+        /// this method adds the item to an internal buffer and returns immediately (subject to backpressure settings).
+        /// When buffered processing is disabled (default), this runs the pipeline asynchronously using Task.Run.
         /// </summary>
         /// <param name="value">The value to emit. The meaning and requirements of this value depend on the implementation.</param>
         /// <param name="cancellationToken">A cancellation token that can be used to cancel the emit operation.</param>
         /// <returns>A task that represents the asynchronous emit operation.</returns>
         Task EmitAsync(TIn value, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Emits multiple values to the stream asynchronously.
+        /// When buffered processing is enabled, items are added to the buffer in bulk for better throughput.
+        /// </summary>
+        /// <param name="values">The values to emit.</param>
+        /// <param name="cancellationToken">A cancellation token that can be used to cancel the emit operation.</param>
+        /// <returns>A task that represents the asynchronous batch emit operation.</returns>
+        Task EmitBatchAsync(IEnumerable<TIn> values, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Emits a value to the stream without waiting for processing to complete (fire-and-forget).
+        /// Requires buffered processing to be enabled via <see cref="StreamPerformanceOptions"/>.
+        /// If the buffer is full, behavior is determined by the <see cref="BackpressureStrategy"/>.
+        /// </summary>
+        /// <param name="value">The value to emit.</param>
+        /// <returns>True if the value was accepted into the buffer; false if it was dropped.</returns>
+        /// <exception cref="System.InvalidOperationException">Thrown when buffered processing is not enabled.</exception>
+        /// <exception cref="BufferFullException">Thrown when the buffer is full and strategy is ThrowException.</exception>
+        bool EmitAndForget(TIn value);
 
         StreamStatuses GetStatus();
 
@@ -40,5 +70,50 @@ namespace Cortex.Streams
 
         TStateStore GetStateStoreByName<TStateStore>(string name) where TStateStore : IDataStore;
         IEnumerable<TStateStore> GetStateStoresByType<TStateStore>() where TStateStore : IDataStore;
+
+        /// <summary>
+        /// Gets the current buffer statistics when buffered processing is enabled.
+        /// Returns null if buffered processing is not enabled.
+        /// </summary>
+        BufferStatistics GetBufferStatistics();
+    }
+
+    /// <summary>
+    /// Statistics about the stream's internal buffer.
+    /// </summary>
+    public sealed class BufferStatistics
+    {
+        /// <summary>
+        /// Current number of items in the buffer.
+        /// </summary>
+        public int CurrentCount { get; set; }
+
+        /// <summary>
+        /// Maximum capacity of the buffer.
+        /// </summary>
+        public int Capacity { get; set; }
+
+        /// <summary>
+        /// Total number of items enqueued since the stream started.
+        /// </summary>
+        public long TotalEnqueued { get; set; }
+
+        /// <summary>
+        /// Total number of items successfully processed since the stream started.
+        /// </summary>
+        public long TotalProcessed { get; set; }
+
+        /// <summary>
+        /// Total number of items dropped due to backpressure since the stream started.
+        /// </summary>
+        public long TotalDropped { get; set; }
+
+        /// <summary>
+        /// Current buffer utilization as a percentage (0-100).
+        /// </summary>
+        public double UtilizationPercent
+        {
+            get { return Capacity > 0 ? (CurrentCount * 100.0) / Capacity : 0; }
+        }
     }
 }
