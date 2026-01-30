@@ -1,4 +1,5 @@
-﻿using Cortex.Streams.Files.Serializers;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Streams.Files.Serializers;
 using Cortex.Streams.Operators;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -7,16 +8,25 @@ using System.IO;
 
 namespace Cortex.Streams.Files
 {
-    public class FileSinkOperator<TInput> : ISinkOperator<TInput>, IDisposable where TInput : new()
+    /// <summary>
+    /// File sink operator that writes serialized data to files.
+    /// Implements IErrorHandlingEnabled to participate in stream-level error handling.
+    /// </summary>
+    /// <typeparam name="TInput">The type of objects to write.</typeparam>
+    public class FileSinkOperator<TInput> : ISinkOperator<TInput>, IErrorHandlingEnabled, IDisposable where TInput : new()
     {
+        private static readonly string OperatorName = $"FileSinkOperator<{typeof(TInput).Name}>";
+
         private readonly string _outputDirectory;
         private readonly FileSinkMode _sinkMode;
         private readonly ISerializer<TInput> _serializer;
         private readonly string _singleFilePath;
         private readonly ILogger<FileSinkOperator<TInput>> _logger;
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
         private StreamWriter _singleFileWriter;
         private readonly object _lock = new object();
         private bool _isRunning = false;
+        private bool _disposed = false;
 
         /// <summary>
         /// Initializes a new instance of FileSinkOperator.
@@ -66,6 +76,14 @@ namespace Cortex.Streams.Files
         }
 
         /// <summary>
+        /// Sets the stream-level error handling options.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+        }
+
+        /// <summary>
         /// Starts the sink operator.
         /// </summary>
         public void Start()
@@ -75,13 +93,25 @@ namespace Cortex.Streams.Files
 
         /// <summary>
         /// Processes the input data by writing it to the appropriate file(s).
+        /// Uses stream-level error handling configured via IErrorHandlingEnabled.
         /// </summary>
         /// <param name="input">The data to write.</param>
         public void Process(TInput input)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(FileSinkOperator<TInput>));
             if (!_isRunning)
                 throw new InvalidOperationException("FileSinkOperator is not running. Call Start() before processing data.");
 
+            // Use core error handling for file write operations
+            ErrorHandlingHelper.TryExecute(
+                _executionOptions,
+                OperatorName,
+                input,
+                (Action<TInput>)WriteToFile);
+        }
+
+        private void WriteToFile(TInput input)
+        {
             string serializedData = _serializer != null ? _serializer.Serialize(input) : DefaultSerializer(input);
 
             if (_sinkMode == FileSinkMode.SingleFile)
@@ -95,14 +125,7 @@ namespace Cortex.Streams.Files
             {
                 string fileName = $"{Guid.NewGuid()}.txt";
                 string filePath = Path.Combine(_outputDirectory, fileName);
-                try
-                {
-                    File.WriteAllText(filePath, serializedData);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error writing to file {FilePath}", filePath);
-                }
+                File.WriteAllText(filePath, serializedData);
             }
         }
 
@@ -140,8 +163,9 @@ namespace Cortex.Streams.Files
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             Stop();
         }
-
     }
 }

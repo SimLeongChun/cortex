@@ -29,7 +29,6 @@ namespace Cortex.Streams.Mediator.Extensions
         /// <param name="mediator">The mediator instance.</param>
         /// <param name="commandFactory">A factory function to create commands from stream data.</param>
         /// <param name="resultHandler">Optional handler for command results.</param>
-        /// <param name="errorHandler">Optional handler for errors.</param>
         /// <param name="cancellationToken">Cancellation token for async operations.</param>
         /// <returns>A sink builder to complete the stream configuration.</returns>
         public static ISinkBuilder<TIn, TCurrent> SinkToCommand<TIn, TCurrent, TCommand, TResult>(
@@ -37,7 +36,6 @@ namespace Cortex.Streams.Mediator.Extensions
             IMediator mediator,
             Func<TCurrent, TCommand> commandFactory,
             Action<TCurrent, TResult> resultHandler = null,
-            Action<TCurrent, Exception> errorHandler = null,
             CancellationToken cancellationToken = default)
             where TCommand : ICommand<TResult>
         {
@@ -45,7 +43,6 @@ namespace Cortex.Streams.Mediator.Extensions
                 mediator,
                 commandFactory,
                 resultHandler,
-                errorHandler,
                 cancellationToken);
 
             return builder.Sink(sinkOperator);
@@ -61,7 +58,6 @@ namespace Cortex.Streams.Mediator.Extensions
         /// <param name="mediator">The mediator instance.</param>
         /// <param name="commandFactory">A factory function to create commands from stream data.</param>
         /// <param name="completionHandler">Optional handler called after successful command execution.</param>
-        /// <param name="errorHandler">Optional handler for errors.</param>
         /// <param name="cancellationToken">Cancellation token for async operations.</param>
         /// <returns>A sink builder to complete the stream configuration.</returns>
         public static ISinkBuilder<TIn, TCurrent> SinkToVoidCommand<TIn, TCurrent, TCommand>(
@@ -69,7 +65,6 @@ namespace Cortex.Streams.Mediator.Extensions
             IMediator mediator,
             Func<TCurrent, TCommand> commandFactory,
             Action<TCurrent> completionHandler = null,
-            Action<TCurrent, Exception> errorHandler = null,
             CancellationToken cancellationToken = default)
             where TCommand : ICommand
         {
@@ -77,7 +72,6 @@ namespace Cortex.Streams.Mediator.Extensions
                 mediator,
                 commandFactory,
                 completionHandler,
-                errorHandler,
                 cancellationToken);
 
             return builder.Sink(sinkOperator);
@@ -97,7 +91,6 @@ namespace Cortex.Streams.Mediator.Extensions
         /// <param name="mediator">The mediator instance.</param>
         /// <param name="notificationFactory">A factory function to create notifications from stream data.</param>
         /// <param name="completionHandler">Optional handler called after successful publishing.</param>
-        /// <param name="errorHandler">Optional handler for errors.</param>
         /// <param name="cancellationToken">Cancellation token for async operations.</param>
         /// <returns>A sink builder to complete the stream configuration.</returns>
         public static ISinkBuilder<TIn, TCurrent> SinkToNotification<TIn, TCurrent, TNotification>(
@@ -105,7 +98,6 @@ namespace Cortex.Streams.Mediator.Extensions
             IMediator mediator,
             Func<TCurrent, TNotification> notificationFactory,
             Action<TCurrent> completionHandler = null,
-            Action<TCurrent, Exception> errorHandler = null,
             CancellationToken cancellationToken = default)
             where TNotification : INotification
         {
@@ -113,7 +105,6 @@ namespace Cortex.Streams.Mediator.Extensions
                 mediator,
                 notificationFactory,
                 completionHandler,
-                errorHandler,
                 cancellationToken);
 
             return builder.Sink(sinkOperator);
@@ -127,21 +118,18 @@ namespace Cortex.Streams.Mediator.Extensions
         /// <param name="builder">The stream builder instance.</param>
         /// <param name="mediator">The mediator instance.</param>
         /// <param name="completionHandler">Optional handler called after successful publishing.</param>
-        /// <param name="errorHandler">Optional handler for errors.</param>
         /// <param name="cancellationToken">Cancellation token for async operations.</param>
         /// <returns>A sink builder to complete the stream configuration.</returns>
         public static ISinkBuilder<TIn, TNotification> PublishNotification<TIn, TNotification>(
             this IStreamBuilder<TIn, TNotification> builder,
             IMediator mediator,
             Action<TNotification> completionHandler = null,
-            Action<TNotification, Exception> errorHandler = null,
             CancellationToken cancellationToken = default)
             where TNotification : INotification
         {
             var sinkOperator = new MediatorDirectNotificationSinkOperator<TNotification>(
                 mediator,
                 completionHandler,
-                errorHandler,
                 cancellationToken);
 
             return builder.Sink(sinkOperator);

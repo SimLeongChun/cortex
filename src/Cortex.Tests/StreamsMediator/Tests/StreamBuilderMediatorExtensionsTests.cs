@@ -203,11 +203,10 @@ namespace Cortex.Tests.StreamsMediator.Tests
         }
 
         [Fact]
-        public void SinkToCommand_InvokesErrorHandler_OnException()
+        public void SinkToCommand_ThrowsException_OnException()
         {
             // Arrange
             var mockMediator = new Mock<IMediator>();
-            var capturedErrors = new List<(string input, Exception ex)>();
 
             mockMediator
                 .Setup(m => m.SendCommandAsync<StreamExtensionTestCommand, string>(
@@ -221,19 +220,13 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .Stream()
                 .SinkToCommand<string, string, StreamExtensionTestCommand, string>(
                     mockMediator.Object,
-                    input => new StreamExtensionTestCommand { Input = input },
-                    errorHandler: (string input, Exception ex) => capturedErrors.Add((input, ex)))
+                    input => new StreamExtensionTestCommand { Input = input })
                 .Build();
 
-            // Act
+            // Act & Assert - Exception should propagate (stream-level error handling handles it)
             stream.Start();
-            stream.Emit("error-input");
+            Assert.Throws<InvalidOperationException>(() => stream.Emit("error-input"));
             stream.Stop();
-
-            // Assert
-            Assert.Single(capturedErrors);
-            Assert.Equal("error-input", capturedErrors[0].input);
-            Assert.IsType<InvalidOperationException>(capturedErrors[0].ex);
         }
 
         [Fact]

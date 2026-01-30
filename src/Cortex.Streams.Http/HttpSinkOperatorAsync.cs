@@ -1,4 +1,5 @@
-﻿using Cortex.Streams.Operators;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Streams.Operators;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
@@ -13,30 +14,29 @@ namespace Cortex.Streams.Http
 {
     /// <summary>
     /// A sink operator that pushes data to an HTTP endpoint asynchronously.
+    /// Implements IErrorHandlingEnabled to participate in stream-level error handling.
     /// </summary>
     /// <typeparam name="TInput">Type of data consumed by this sink.</typeparam>
-    public class HttpSinkOperatorAsync<TInput> : ISinkOperator<TInput>
+    public class HttpSinkOperatorAsync<TInput> : ISinkOperator<TInput>, IErrorHandlingEnabled
     {
+        private static readonly string OperatorName = $"HttpSinkOperatorAsync<{typeof(TInput).Name}>";
+
         private readonly string _endpoint;
         private readonly HttpClient _httpClient;
         private readonly JsonSerializerOptions _jsonOptions;
         private readonly ILogger<HttpSinkOperatorAsync<TInput>> _logger;
-
-        // Retry configuration
-        private readonly int _maxRetries;
-        private readonly TimeSpan _initialDelay;
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         // Internal queue and background worker
         private BlockingCollection<TInput> _messageQueue;
         private CancellationTokenSource _cts;
         private Task _workerTask;
+        private bool _isRunning;
 
         /// <summary>
         /// Constructs an asynchronous HTTP sink operator.
         /// </summary>
         /// <param name="endpoint">The HTTP endpoint to which data should be posted.</param>
-        /// <param name="maxRetries">Max consecutive retries on failure before giving up.</param>
-        /// <param name="initialDelay">Initial backoff delay for retries.</param>
         /// <param name="httpClient">
         /// Optional <see cref="HttpClient"/>.  
         /// If null, a new HttpClient will be created (but consider <see cref="IHttpClientFactory"/> in production).
@@ -45,15 +45,11 @@ namespace Cortex.Streams.Http
         /// <param name="logger">Optional logger for diagnostic output.</param>
         public HttpSinkOperatorAsync(
             string endpoint,
-            int maxRetries = 3,
-            TimeSpan? initialDelay = null,
             HttpClient httpClient = null,
             JsonSerializerOptions jsonOptions = null,
             ILogger<HttpSinkOperatorAsync<TInput>> logger = null)
         {
             _endpoint = endpoint ?? throw new ArgumentNullException(nameof(endpoint));
-            _maxRetries = maxRetries;
-            _initialDelay = initialDelay ?? TimeSpan.FromMilliseconds(500);
 
             _httpClient = httpClient ?? new HttpClient();
             _jsonOptions = jsonOptions ?? new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -61,26 +57,53 @@ namespace Cortex.Streams.Http
         }
 
         /// <summary>
+        /// Sets the stream-level error handling options.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+        }
+
+        /// <summary>
         /// Called once when the sink operator starts. Spawns a background worker.
         /// </summary>
         public void Start()
         {
+            if (_isRunning) return;
+
             // Prepare the queue and cancellation token
             _messageQueue = new BlockingCollection<TInput>(boundedCapacity: 10000);
             _cts = new CancellationTokenSource();
 
             // Launch the worker that processes messages asynchronously
             _workerTask = Task.Run(() => WorkerLoopAsync(_cts.Token));
+            _isRunning = true;
+            _logger.LogInformation("HttpSinkOperatorAsync started for endpoint {Endpoint}", _endpoint);
         }
 
         /// <summary>
         /// Queues incoming data for asynchronous sending.
+        /// Uses stream-level error handling for queue operations.
         /// </summary>
         /// <param name="input">The data to be sent to the HTTP endpoint.</param>
         public void Process(TInput input)
         {
-            // Enqueue the item. If the queue is full (bounded), this will block briefly.
-            // If you want a non-blocking approach, consider _messageQueue.TryAdd(...).
+            if (!_isRunning)
+            {
+                _logger.LogWarning("HttpSinkOperatorAsync is not running. Call Start() before processing data.");
+                return;
+            }
+
+            // Use core error handling for enqueueing
+            ErrorHandlingHelper.TryExecute(
+                _executionOptions,
+                OperatorName,
+                input,
+                (Action<TInput>)EnqueueMessage);
+        }
+
+        private void EnqueueMessage(TInput input)
+        {
             _messageQueue.Add(input);
         }
 
@@ -89,6 +112,8 @@ namespace Cortex.Streams.Http
         /// </summary>
         public void Stop()
         {
+            if (!_isRunning) return;
+
             _cts.Cancel();
             _messageQueue.CompleteAdding();
 
@@ -99,12 +124,13 @@ namespace Cortex.Streams.Http
             }
             catch (AggregateException ex)
             {
-                // If the worker loop was canceled or faulted, handle if needed
                 _logger.LogWarning(ex, "HttpSinkOperatorAsync: Worker stopped with exception for endpoint {Endpoint}", _endpoint);
             }
 
             _cts.Dispose();
             _messageQueue.Dispose();
+            _isRunning = false;
+            _logger.LogInformation("HttpSinkOperatorAsync stopped for endpoint {Endpoint}", _endpoint);
         }
 
         /// <summary>
@@ -117,65 +143,41 @@ namespace Cortex.Streams.Http
                 TInput item;
                 try
                 {
-                    // Blocks until an item is available or cancellation is requested
                     item = _messageQueue.Take(token);
                 }
                 catch (OperationCanceledException)
                 {
-                    // Gracefully exit when canceled
                     break;
                 }
                 catch (InvalidOperationException)
                 {
-                    // The collection has been marked as CompleteAdding
                     break;
                 }
 
-                // Send the item asynchronously (with retries)
-                await SendAsync(item, token);
+                // Send the item asynchronously
+                try
+                {
+                    await SendAsync(item, token);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "HttpSinkOperatorAsync: Error processing message for endpoint {Endpoint}", _endpoint);
+                }
             }
         }
 
         /// <summary>
-        /// Sends one item to the configured HTTP endpoint using exponential backoff.
+        /// Sends one item to the configured HTTP endpoint.
         /// </summary>
         private async Task SendAsync(TInput item, CancellationToken token)
         {
-            int attempt = 0;
-            TimeSpan delay = _initialDelay;
+            var json = JsonSerializer.Serialize(item, _jsonOptions);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    var json = JsonSerializer.Serialize(item, _jsonOptions);
-                    var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var response = await _httpClient.PostAsync(_endpoint, content, token);
+            response.EnsureSuccessStatusCode();
 
-                    using var response = await _httpClient.PostAsync(_endpoint, content, token);
-                    response.EnsureSuccessStatusCode();
-
-                    // Success; break out of the loop
-                    break;
-                }
-                catch (Exception ex) when (!(ex is OperationCanceledException))
-                {
-                    attempt++;
-                    if (attempt > _maxRetries)
-                    {
-                        _logger.LogError(ex, "HttpSinkOperatorAsync: Exhausted {MaxRetries} retries for endpoint {Endpoint}", _maxRetries, _endpoint);
-                        break;
-                    }
-
-                    _logger.LogWarning(ex, "HttpSinkOperatorAsync: Error sending data to {Endpoint} (attempt {Attempt} of {MaxRetries}). Retrying in {Delay}", _endpoint, attempt, _maxRetries, delay);
-
-                    // Exponential backoff, but only if not canceled
-                    if (!token.IsCancellationRequested)
-                    {
-                        await Task.Delay(delay, token);
-                        delay = TimeSpan.FromMilliseconds(delay.TotalMilliseconds * 2);
-                    }
-                }
-            }
+            _logger.LogDebug("Successfully posted data to {Endpoint}", _endpoint);
         }
     }
 }

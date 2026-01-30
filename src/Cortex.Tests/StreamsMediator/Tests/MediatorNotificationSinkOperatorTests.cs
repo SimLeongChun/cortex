@@ -100,12 +100,10 @@ namespace Cortex.Tests.StreamsMediator.Tests
         }
 
         [Fact]
-        public void Process_InvokesErrorHandler_WhenExceptionOccurs()
+        public void Process_ThrowsException_WhenErrorOccurs()
         {
             // Arrange
             var mockMediator = new Mock<IMediator>();
-            Exception? capturedException = null;
-            string? capturedInput = null;
 
             mockMediator
                 .Setup(m => m.PublishAsync(
@@ -115,24 +113,14 @@ namespace Cortex.Tests.StreamsMediator.Tests
 
             var sinkOperator = new MediatorNotificationSinkOperator<string, OrderProcessedNotification>(
                 mockMediator.Object,
-                input => new OrderProcessedNotification { OrderId = input },
-                errorHandler: (input, ex) =>
-                {
-                    capturedInput = input;
-                    capturedException = ex;
-                });
+                input => new OrderProcessedNotification { OrderId = input });
 
-            // Act
-            sinkOperator.Process("ORDER-003");
-
-            // Assert
-            Assert.Equal("ORDER-003", capturedInput);
-            Assert.NotNull(capturedException);
-            Assert.IsType<InvalidOperationException>(capturedException);
+            // Act & Assert - Exception should propagate (stream-level error handling handles it)
+            Assert.Throws<InvalidOperationException>(() => sinkOperator.Process("ORDER-003"));
         }
 
         [Fact]
-        public void Process_ThrowsException_WhenNoErrorHandlerProvided()
+        public void Process_ThrowsException_WhenMediatorFails()
         {
             // Arrange
             var mockMediator = new Mock<IMediator>();
@@ -205,6 +193,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
 
             var notification = new TestNotification { Message = "Test" };
 
+
             // Act
             sinkOperator.Process(notification);
 
@@ -214,11 +203,10 @@ namespace Cortex.Tests.StreamsMediator.Tests
         }
 
         [Fact]
-        public void Process_InvokesErrorHandler_WhenExceptionOccurs()
+        public void Process_ThrowsException_WhenErrorOccurs()
         {
             // Arrange
             var mockMediator = new Mock<IMediator>();
-            Exception? capturedException = null;
 
             mockMediator
                 .Setup(m => m.PublishAsync(
@@ -227,15 +215,10 @@ namespace Cortex.Tests.StreamsMediator.Tests
                 .ThrowsAsync(new InvalidOperationException("Publish failed"));
 
             var sinkOperator = new MediatorDirectNotificationSinkOperator<TestNotification>(
-                mockMediator.Object,
-                errorHandler: (_, ex) => capturedException = ex);
+                mockMediator.Object);
 
-            // Act
-            sinkOperator.Process(new TestNotification { Message = "Error" });
-
-            // Assert
-            Assert.NotNull(capturedException);
-            Assert.IsType<InvalidOperationException>(capturedException);
+            // Act & Assert - Exception should propagate (stream-level error handling handles it)
+            Assert.Throws<InvalidOperationException>(() => sinkOperator.Process(new TestNotification { Message = "Error" }));
         }
     }
 }
