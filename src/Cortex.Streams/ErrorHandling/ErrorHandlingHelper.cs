@@ -3,7 +3,11 @@ using System.Threading;
 
 namespace Cortex.Streams.ErrorHandling
 {
-    internal static class ErrorHandlingHelper
+    /// <summary>
+    /// Helper class for executing operations with error handling support.
+    /// Provides retry, skip, and stop functionality based on stream execution options.
+    /// </summary>
+    public static class ErrorHandlingHelper
     {
         public static bool TryExecute<TInput>(
             StreamExecutionOptions options,

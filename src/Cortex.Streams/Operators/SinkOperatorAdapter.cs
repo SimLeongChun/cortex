@@ -1,11 +1,16 @@
-﻿using Cortex.Telemetry;
+﻿using Cortex.Streams.ErrorHandling;
+using Cortex.Telemetry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace Cortex.Streams.Operators
 {
-    public class SinkOperatorAdapter<TInput> : IOperator, IHasNextOperators, ITelemetryEnabled
+    /// <summary>
+    /// Adapter that wraps an ISinkOperator to work within the operator chain.
+    /// Forwards telemetry and error handling configuration to the wrapped operator.
+    /// </summary>
+    public class SinkOperatorAdapter<TInput> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly ISinkOperator<TInput> _sinkOperator;
 
@@ -41,6 +46,18 @@ namespace Cortex.Streams.Operators
             {
                 _incrementProcessedCounter = null;
                 _recordProcessingTime = null;
+            }
+        }
+
+        /// <summary>
+        /// Forwards error handling configuration to the wrapped sink operator if it implements IErrorHandlingEnabled.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            // Forward error handling to the wrapped sink operator if it supports it
+            if (_sinkOperator is IErrorHandlingEnabled errorHandlingEnabled)
+            {
+                errorHandlingEnabled.SetErrorHandling(options);
             }
         }
 

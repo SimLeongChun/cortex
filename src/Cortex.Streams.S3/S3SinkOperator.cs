@@ -1,27 +1,34 @@
 ﻿using Amazon.S3;
 using Amazon.S3.Transfer;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 using Cortex.Streams.S3.Serializers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
-using System.Threading.Tasks;
+using System.IO;
+using System.Text;
 
 namespace Cortex.Streams.S3
 {
     /// <summary>
     /// AWS S3 Sink Operator that writes serialized data to an S3 bucket.
+    /// Implements IErrorHandlingEnabled to participate in stream-level error handling.
     /// </summary>
     /// <typeparam name="TInput">The type of objects to send.</typeparam>
-    public class S3SinkOperator<TInput> : ISinkOperator<TInput>, IDisposable
+    public class S3SinkOperator<TInput> : ISinkOperator<TInput>, IErrorHandlingEnabled, IDisposable
     {
+        private static readonly string OperatorName = $"S3SinkOperator<{typeof(TInput).Name}>";
+
         private readonly string _bucketName;
         private readonly string _folderPath;
         private readonly ISerializer<TInput> _serializer;
         private readonly IAmazonS3 _s3Client;
         private readonly TransferUtility _transferUtility;
         private readonly ILogger<S3SinkOperator<TInput>> _logger;
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
         private bool _isRunning;
+        private bool _disposed;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="S3SinkOperator{TInput}"/> class.
@@ -49,21 +56,33 @@ namespace Cortex.Streams.S3
         }
 
         /// <summary>
+        /// Sets the stream-level error handling options.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+        }
+
+        /// <summary>
         /// Starts the sink operator.
         /// </summary>
         public void Start()
         {
-            if (_isRunning) throw new InvalidOperationException("S3SinkOperator is already running.");
+            if (_disposed) throw new ObjectDisposedException(nameof(S3SinkOperator<TInput>));
+            if (_isRunning) return;
 
             _isRunning = true;
+            _logger.LogInformation("S3SinkOperator started for bucket {BucketName}", _bucketName);
         }
 
         /// <summary>
         /// Processes the input object by serializing it and sending it to AWS S3.
+        /// Uses stream-level error handling configured via IErrorHandlingEnabled.
         /// </summary>
         /// <param name="input">The input object to send.</param>
         public void Process(TInput input)
         {
+            if (_disposed) throw new ObjectDisposedException(nameof(S3SinkOperator<TInput>));
             if (!_isRunning)
             {
                 _logger.LogWarning("S3SinkOperator is not running. Call Start() before processing messages");
@@ -76,7 +95,31 @@ namespace Cortex.Streams.S3
                 return;
             }
 
-            Task.Run(() => SendMessageAsync(input));
+            // Use core error handling for message processing
+            ErrorHandlingHelper.TryExecute(
+                _executionOptions,
+                OperatorName,
+                input,
+                (Action<TInput>)UploadToS3);
+        }
+
+        private void UploadToS3(TInput input)
+        {
+            var serializedMessage = _serializer.Serialize(input);
+            var fileName = $"{Guid.NewGuid()}.json";
+            var key = $"{_folderPath}/{fileName}";
+
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(serializedMessage));
+            var uploadRequest = new TransferUtilityUploadRequest
+            {
+                InputStream = stream,
+                Key = key,
+                BucketName = _bucketName,
+                ContentType = "application/json"
+            };
+
+            _transferUtility.Upload(uploadRequest);
+            _logger.LogDebug("Uploaded message to S3 bucket {BucketName} at key {Key}", _bucketName, key);
         }
 
         /// <summary>
@@ -84,45 +127,10 @@ namespace Cortex.Streams.S3
         /// </summary>
         public void Stop()
         {
-            if (!_isRunning) return;
+            if (!_isRunning || _disposed) return;
 
-            Dispose();
             _isRunning = false;
             _logger.LogInformation("S3SinkOperator stopped for bucket {BucketName}", _bucketName);
-        }
-
-        /// <summary>
-        /// Sends a serialized message to AWS S3 asynchronously.
-        /// </summary>
-        /// <param name="obj">The input object to send.</param>
-        /// <returns>A task representing the asynchronous operation.</returns>
-        private async Task SendMessageAsync(TInput obj)
-        {
-            var serializedMessage = _serializer.Serialize(obj);
-            var fileName = $"{Guid.NewGuid()}.json"; // e.g., unique-id.json
-            var key = $"{_folderPath}/{fileName}";
-
-            try
-            {
-                using System.IO.MemoryStream stream = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(serializedMessage));
-                var uploadRequest = new TransferUtilityUploadRequest
-                {
-                    InputStream = stream,
-                    Key = key,
-                    BucketName = _bucketName,
-                    ContentType = "application/json"
-                };
-
-                await _transferUtility.UploadAsync(uploadRequest);
-            }
-            catch (AmazonS3Exception s3Ex)
-            {
-                _logger.LogError(s3Ex, "Error uploading message to S3 bucket {BucketName} at key {Key}", _bucketName, key);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "General error uploading message to S3 bucket {BucketName} at key {Key}", _bucketName, key);
-            }
         }
 
         /// <summary>
@@ -130,6 +138,9 @@ namespace Cortex.Streams.S3
         /// </summary>
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             _transferUtility?.Dispose();
             _s3Client?.Dispose();
         }

@@ -89,7 +89,6 @@ namespace Cortex.Streams.Mediator.DependencyInjection
         Operators.MediatorCommandSinkOperator<TInput, TCommand, TResult> CreateCommandSink<TInput, TCommand, TResult>(
             Func<TInput, TCommand> commandFactory,
             Action<TInput, TResult> resultHandler = null,
-            Action<TInput, Exception> errorHandler = null,
             System.Threading.CancellationToken cancellationToken = default)
             where TCommand : ICommand<TResult>;
 
@@ -99,7 +98,6 @@ namespace Cortex.Streams.Mediator.DependencyInjection
         Operators.MediatorNotificationSinkOperator<TInput, TNotification> CreateNotificationSink<TInput, TNotification>(
             Func<TInput, TNotification> notificationFactory,
             Action<TInput> completionHandler = null,
-            Action<TInput, Exception> errorHandler = null,
             System.Threading.CancellationToken cancellationToken = default)
             where TNotification : INotification;
     }
@@ -119,7 +117,6 @@ namespace Cortex.Streams.Mediator.DependencyInjection
         public Operators.MediatorCommandSinkOperator<TInput, TCommand, TResult> CreateCommandSink<TInput, TCommand, TResult>(
             Func<TInput, TCommand> commandFactory,
             Action<TInput, TResult> resultHandler = null,
-            Action<TInput, Exception> errorHandler = null,
             System.Threading.CancellationToken cancellationToken = default)
             where TCommand : ICommand<TResult>
         {
@@ -127,14 +124,12 @@ namespace Cortex.Streams.Mediator.DependencyInjection
                 _mediator,
                 commandFactory,
                 resultHandler,
-                errorHandler,
                 cancellationToken);
         }
 
         public Operators.MediatorNotificationSinkOperator<TInput, TNotification> CreateNotificationSink<TInput, TNotification>(
             Func<TInput, TNotification> notificationFactory,
             Action<TInput> completionHandler = null,
-            Action<TInput, Exception> errorHandler = null,
             System.Threading.CancellationToken cancellationToken = default)
             where TNotification : INotification
         {
@@ -142,7 +137,6 @@ namespace Cortex.Streams.Mediator.DependencyInjection
                 _mediator,
                 notificationFactory,
                 completionHandler,
-                errorHandler,
                 cancellationToken);
         }
     }

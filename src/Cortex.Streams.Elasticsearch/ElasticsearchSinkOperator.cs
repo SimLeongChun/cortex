@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.States.Operators;
+using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.Core.Bulk;
@@ -13,17 +14,21 @@ namespace Cortex.Streams.Elasticsearch
 {
     /// <summary>
     /// A sink operator that writes data to an Elasticsearch index in bulk.
+    /// Implements IErrorHandlingEnabled to participate in stream-level error handling.
     /// 
     /// If some documents fail to index, they are stored in an IDataStore for later retries.
     /// A background service attempts to resend failed documents at a specified interval.
     /// </summary>
     /// <typeparam name="TInput">Type of the document to be indexed.</typeparam>
-    public class ElasticsearchSinkOperator<TInput> : ISinkOperator<TInput>, IStatefulOperator
+    public class ElasticsearchSinkOperator<TInput> : ISinkOperator<TInput>, IErrorHandlingEnabled, IStatefulOperator
     {
+        private static readonly string OperatorName = $"ElasticsearchSinkOperator<{typeof(TInput).Name}>";
+
         private readonly ElasticsearchClient _client;
         private readonly string _indexName;
         private readonly IDataStore<string, TInput> _failedDocumentsStore;
         private readonly ILogger<ElasticsearchSinkOperator<TInput>> _logger;
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         // Local in-memory buffer for the current batch to be flushed.
         private readonly List<TInput> _currentBatch;
@@ -95,16 +100,36 @@ namespace Cortex.Streams.Elasticsearch
         }
 
         /// <summary>
+        /// Sets the stream-level error handling options.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+        }
+
+        /// <summary>
         /// Called by the pipeline to process each record. 
         /// Accumulates into a batch, then flushes to ES once we exceed _batchSize.
+        /// Uses stream-level error handling configured via IErrorHandlingEnabled.
         /// </summary>
         public void Process(TInput input)
         {
             if (!_isStarted)
             {
                 LogError("Process called before the ElasticsearchSinkOperator was started. Please start the operator before start processing.");
+                return;
             }
 
+            // Use core error handling for the batching operation
+            ErrorHandlingHelper.TryExecute(
+                _executionOptions,
+                OperatorName,
+                input,
+                (Action<TInput>)AddToBatch);
+        }
+
+        private void AddToBatch(TInput input)
+        {
             lock (_batchLock)
             {
                 _currentBatch.Add(input);
