@@ -215,7 +215,7 @@ namespace Cortex.Streams
         }
 
 
-        public IStream<TIn, TCurrent> Build()
+        public IStream<TIn> Build()
         {
             //return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators);
             return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions, _performanceOptions);

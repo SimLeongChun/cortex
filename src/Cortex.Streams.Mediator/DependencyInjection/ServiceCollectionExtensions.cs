@@ -22,7 +22,7 @@ namespace Cortex.Streams.Mediator.DependencyInjection
         /// <returns>The service collection for chaining.</returns>
         public static IServiceCollection AddStreamEmittingNotificationHandler<TNotification>(
             this IServiceCollection services,
-            Func<IServiceProvider, IStream<TNotification, TNotification>> streamFactory,
+            Func<IServiceProvider, IStream<TNotification>> streamFactory,
             Action<TNotification, Exception> errorHandler = null)
             where TNotification : INotification
         {
@@ -47,7 +47,7 @@ namespace Cortex.Streams.Mediator.DependencyInjection
         /// <returns>The service collection for chaining.</returns>
         public static IServiceCollection AddTransformingStreamNotificationHandler<TNotification, TStreamInput>(
             this IServiceCollection services,
-            Func<IServiceProvider, IStream<TStreamInput, TStreamInput>> streamFactory,
+            Func<IServiceProvider, IStream<TStreamInput>> streamFactory,
             Func<TNotification, TStreamInput> transformer,
             Action<TNotification, Exception> errorHandler = null)
             where TNotification : INotification

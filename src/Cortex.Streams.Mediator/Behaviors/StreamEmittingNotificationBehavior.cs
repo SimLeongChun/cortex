@@ -18,7 +18,7 @@ namespace Cortex.Streams.Mediator.Behaviors
     public class StreamEmittingNotificationBehavior<TNotification> : INotificationPipelineBehavior<TNotification>
         where TNotification : INotification
     {
-        private readonly IStream<NotificationEvent<TNotification>, NotificationEvent<TNotification>> _stream;
+        private readonly IStream<NotificationEvent<TNotification>> _stream;
         private readonly bool _emitBeforeHandling;
         private readonly bool _emitAfterHandling;
 
@@ -29,7 +29,7 @@ namespace Cortex.Streams.Mediator.Behaviors
         /// <param name="emitBeforeHandling">If true, emit an event before notification handling.</param>
         /// <param name="emitAfterHandling">If true, emit an event after notification handling.</param>
         public StreamEmittingNotificationBehavior(
-            IStream<NotificationEvent<TNotification>, NotificationEvent<TNotification>> stream,
+            IStream<NotificationEvent<TNotification>> stream,
             bool emitBeforeHandling = false,
             bool emitAfterHandling = true)
         {

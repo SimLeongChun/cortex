@@ -34,7 +34,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_EmitsAfterExecutionEvent_WhenConfigured()
         {
             // Arrange
-            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>, CommandExecutionEvent<TestCommand, TestCommandResult>>>();
+            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>>>();
             CommandExecutionEvent<TestCommand, TestCommandResult>? capturedEvent = null;
 
             mockStream
@@ -68,7 +68,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_EmitsBeforeExecutionEvent_WhenConfigured()
         {
             // Arrange
-            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>, CommandExecutionEvent<TestCommand, TestCommandResult>>>();
+            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>>>();
             var capturedEvents = new List<CommandExecutionEvent<TestCommand, TestCommandResult>>();
 
             mockStream
@@ -97,7 +97,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_EmitsFailedEvent_WhenCommandThrows()
         {
             // Arrange
-            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>, CommandExecutionEvent<TestCommand, TestCommandResult>>>();
+            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>>>();
             CommandExecutionEvent<TestCommand, TestCommandResult>? capturedEvent = null;
 
             mockStream
@@ -128,7 +128,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_DoesNotEmit_WhenBothFlagsAreFalse()
         {
             // Arrange
-            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>, CommandExecutionEvent<TestCommand, TestCommandResult>>>();
+            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>>>();
 
             var behavior = new StreamEmittingCommandBehavior<TestCommand, TestCommandResult>(
                 mockStream.Object,
@@ -151,7 +151,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_IncludesDuration_InAfterEvent()
         {
             // Arrange
-            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>, CommandExecutionEvent<TestCommand, TestCommandResult>>>();
+            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>>>();
             CommandExecutionEvent<TestCommand, TestCommandResult>? capturedEvent = null;
 
             mockStream
@@ -184,7 +184,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_PropagatesResultCorrectly()
         {
             // Arrange
-            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>, CommandExecutionEvent<TestCommand, TestCommandResult>>>();
+            var mockStream = new Mock<IStream<CommandExecutionEvent<TestCommand, TestCommandResult>>>();
             mockStream
                 .Setup(s => s.EmitAsync(It.IsAny<CommandExecutionEvent<TestCommand, TestCommandResult>>(), It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
