@@ -14,6 +14,9 @@ namespace Cortex.Streams.Operators
     {
         private readonly ISinkOperator<TInput> _sinkOperator;
 
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"SinkOperatorAdapter<{typeof(TInput).Name}>";
+
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
         private ICounter _processedCounter;
@@ -21,6 +24,9 @@ namespace Cortex.Streams.Operators
         private ITracer _tracer;
         private Action _incrementProcessedCounter;
         private Action<double> _recordProcessingTime;
+
+        // Error handling fields
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
 
         public SinkOperatorAdapter(ISinkOperator<TInput> sinkOperator)
         {
@@ -51,9 +57,12 @@ namespace Cortex.Streams.Operators
 
         /// <summary>
         /// Forwards error handling configuration to the wrapped sink operator if it implements IErrorHandlingEnabled.
+        /// Also stores the options for use in this adapter's error handling.
         /// </summary>
         public void SetErrorHandling(StreamExecutionOptions options)
         {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
             // Forward error handling to the wrapped sink operator if it supports it
             if (_sinkOperator is IErrorHandlingEnabled errorHandlingEnabled)
             {
@@ -71,8 +80,19 @@ namespace Cortex.Streams.Operators
                 {
                     try
                     {
-                        _sinkOperator.Process((TInput)input);
-                        span.SetAttribute("status", "success");
+                        var executed = ErrorHandlingHelper.TryExecute<TInput>(
+                            _executionOptions,
+                            OperatorName,
+                            input,
+                            item => _sinkOperator.Process(item));
+
+                        span.SetAttribute("status", executed ? "success" : "skipped");
+                    }
+                    catch (StreamStoppedException ex)
+                    {
+                        span.SetAttribute("status", "stopped");
+                        span.SetAttribute("exception", ex.ToString());
+                        throw;
                     }
                     catch (Exception ex)
                     {
@@ -83,14 +103,18 @@ namespace Cortex.Streams.Operators
                     finally
                     {
                         stopwatch.Stop();
-                        _recordProcessingTime(stopwatch.Elapsed.TotalMilliseconds);
-                        _incrementProcessedCounter();
+                        _recordProcessingTime?.Invoke(stopwatch.Elapsed.TotalMilliseconds);
+                        _incrementProcessedCounter?.Invoke();
                     }
                 }
             }
             else
             {
-                _sinkOperator.Process((TInput)input);
+                ErrorHandlingHelper.TryExecute<TInput>(
+                    _executionOptions,
+                    OperatorName,
+                    input,
+                    item => _sinkOperator.Process(item));
             }
         }
 
