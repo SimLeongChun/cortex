@@ -13,7 +13,7 @@ namespace Cortex.Streams.Mediator.Handlers
     public class StreamEmittingNotificationHandler<TNotification> : INotificationHandler<TNotification>
         where TNotification : INotification
     {
-        private readonly IStream<TNotification, TNotification> _stream;
+        private readonly IStream<TNotification> _stream;
         private readonly Action<TNotification, Exception> _errorHandler;
 
         /// <summary>
@@ -22,7 +22,7 @@ namespace Cortex.Streams.Mediator.Handlers
         /// <param name="stream">The stream to emit notifications to.</param>
         /// <param name="errorHandler">Optional handler for errors during emission.</param>
         public StreamEmittingNotificationHandler(
-            IStream<TNotification, TNotification> stream,
+            IStream<TNotification> stream,
             Action<TNotification, Exception> errorHandler = null)
         {
             _stream = stream ?? throw new ArgumentNullException(nameof(stream));
@@ -62,7 +62,7 @@ namespace Cortex.Streams.Mediator.Handlers
     public class TransformingStreamNotificationHandler<TNotification, TStreamInput> : INotificationHandler<TNotification>
         where TNotification : INotification
     {
-        private readonly IStream<TStreamInput, TStreamInput> _stream;
+        private readonly IStream<TStreamInput> _stream;
         private readonly Func<TNotification, TStreamInput> _transformer;
         private readonly Action<TNotification, Exception> _errorHandler;
 
@@ -73,7 +73,7 @@ namespace Cortex.Streams.Mediator.Handlers
         /// <param name="transformer">A function to transform notifications into stream input.</param>
         /// <param name="errorHandler">Optional handler for errors during emission.</param>
         public TransformingStreamNotificationHandler(
-            IStream<TStreamInput, TStreamInput> stream,
+            IStream<TStreamInput> stream,
             Func<TNotification, TStreamInput> transformer,
             Action<TNotification, Exception> errorHandler = null)
         {

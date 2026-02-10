@@ -1,5 +1,6 @@
 ﻿using Cortex.States;
 using Cortex.States.Operators;
+using Cortex.Streams.Abstractions;
 using Cortex.Streams.ErrorHandling;
 using Cortex.Streams.Operators;
 using Cortex.Streams.Performance;
@@ -16,8 +17,8 @@ namespace Cortex.Streams
     /// Represents a built stream that can be started and stopped.
     /// </summary>
     /// <typeparam name="TIn">The type of the initial input to the stream.</typeparam>
-    /// <typeparam name="TCurrent">The current type of data in the stream.</typeparam>
-    public class Stream<TIn, TCurrent> : IStream<TIn, TCurrent>, IStatefulOperator, IDisposable
+    /// <typeparam name="TCurrent">The current type of data in the stream (internal use only).</typeparam>
+    public class Stream<TIn, TCurrent> : IStream<TIn>, IStatefulOperator, IDisposable
     {
         private readonly string _name;
         private readonly IOperator _operatorChain;
@@ -362,9 +363,9 @@ namespace Cortex.Streams
             };
         }
 
-        public IReadOnlyDictionary<string, BranchOperator<TCurrent>> GetBranches()
+        public IReadOnlyDictionary<string, IBranchInfo> GetBranches()
         {
-            var branchDict = new Dictionary<string, BranchOperator<TCurrent>>();
+            var branchDict = new Dictionary<string, IBranchInfo>();
             foreach (var branchOperator in _branchOperators)
             {
                 branchDict[branchOperator.BranchName] = branchOperator;

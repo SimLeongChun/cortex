@@ -1,5 +1,5 @@
 ﻿using Cortex.States;
-using Cortex.Streams.Operators;
+using Cortex.Streams.Abstractions;
 using Cortex.Streams.Performance;
 using System.Collections.Generic;
 using System.Threading;
@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Cortex.Streams
 {
-    public interface IStream<TIn, TCurrent>
+    public interface IStream<TIn>
     {
         /// <summary>
         /// Start the stream processing.
@@ -66,7 +66,7 @@ namespace Cortex.Streams
 
         StreamStatuses GetStatus();
 
-        IReadOnlyDictionary<string, BranchOperator<TCurrent>> GetBranches();
+        IReadOnlyDictionary<string, IBranchInfo> GetBranches();
 
         TStateStore GetStateStoreByName<TStateStore>(string name) where TStateStore : IDataStore;
         IEnumerable<TStateStore> GetStateStoresByType<TStateStore>() where TStateStore : IDataStore;

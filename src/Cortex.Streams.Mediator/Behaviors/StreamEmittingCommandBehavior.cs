@@ -14,7 +14,7 @@ namespace Cortex.Streams.Mediator.Behaviors
     public class StreamEmittingCommandBehavior<TCommand, TResult> : ICommandPipelineBehavior<TCommand, TResult>
         where TCommand : ICommand<TResult>
     {
-        private readonly IStream<CommandExecutionEvent<TCommand, TResult>, CommandExecutionEvent<TCommand, TResult>> _stream;
+        private readonly IStream<CommandExecutionEvent<TCommand, TResult>> _stream;
         private readonly bool _emitBeforeExecution;
         private readonly bool _emitAfterExecution;
 
@@ -25,7 +25,7 @@ namespace Cortex.Streams.Mediator.Behaviors
         /// <param name="emitBeforeExecution">If true, emit an event before command execution.</param>
         /// <param name="emitAfterExecution">If true, emit an event after command execution.</param>
         public StreamEmittingCommandBehavior(
-            IStream<CommandExecutionEvent<TCommand, TResult>, CommandExecutionEvent<TCommand, TResult>> stream,
+            IStream<CommandExecutionEvent<TCommand, TResult>> stream,
             bool emitBeforeExecution = false,
             bool emitAfterExecution = true)
         {

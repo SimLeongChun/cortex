@@ -35,7 +35,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_EmitsNotificationToStream()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderCreatedNotification, OrderCreatedNotification>>();
+            var mockStream = new Mock<IStream<OrderCreatedNotification>>();
             OrderCreatedNotification? capturedNotification = null;
 
             mockStream
@@ -63,7 +63,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_InvokesErrorHandler_WhenStreamEmitFails()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderCreatedNotification, OrderCreatedNotification>>();
+            var mockStream = new Mock<IStream<OrderCreatedNotification>>();
             OrderCreatedNotification? capturedNotification = null;
             Exception? capturedException = null;
 
@@ -95,7 +95,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_ThrowsException_WhenNoErrorHandlerAndStreamFails()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderCreatedNotification, OrderCreatedNotification>>();
+            var mockStream = new Mock<IStream<OrderCreatedNotification>>();
 
             mockStream
                 .Setup(s => s.EmitAsync(It.IsAny<OrderCreatedNotification>(), It.IsAny<CancellationToken>()))
@@ -113,7 +113,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_PassesCancellationToken_ToStream()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderCreatedNotification, OrderCreatedNotification>>();
+            var mockStream = new Mock<IStream<OrderCreatedNotification>>();
             CancellationToken capturedToken = default;
 
             mockStream
@@ -149,7 +149,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public void Constructor_ThrowsArgumentNullException_WhenTransformerIsNull()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderStreamData, OrderStreamData>>();
+            var mockStream = new Mock<IStream<OrderStreamData>>();
 
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() =>
@@ -162,7 +162,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_TransformsAndEmitsNotificationToStream()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderStreamData, OrderStreamData>>();
+            var mockStream = new Mock<IStream<OrderStreamData>>();
             OrderStreamData? capturedData = null;
 
             mockStream
@@ -197,7 +197,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_InvokesErrorHandler_WhenTransformFails()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderStreamData, OrderStreamData>>();
+            var mockStream = new Mock<IStream<OrderStreamData>>();
             Exception? capturedException = null;
 
             var handler = new TransformingStreamNotificationHandler<OrderCreatedNotification, OrderStreamData>(
@@ -220,7 +220,7 @@ namespace Cortex.Tests.StreamsMediator.Tests
         public async Task Handle_InvokesErrorHandler_WhenStreamEmitFails()
         {
             // Arrange
-            var mockStream = new Mock<IStream<OrderStreamData, OrderStreamData>>();
+            var mockStream = new Mock<IStream<OrderStreamData>>();
             Exception? capturedException = null;
 
             mockStream

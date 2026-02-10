@@ -43,7 +43,7 @@ namespace Cortex.Streams
         /// Builds the stream and returns a stream instance.
         /// </summary>
         /// <returns>A stream instance.</returns>
-        public IStream<TIn, TCurrent> Build()
+        public IStream<TIn> Build()
         {
             return new Stream<TIn, TCurrent>(_name, _firstOperator, _branchOperators, _telemetryProvider, _executionOptions, _performanceOptions);
         }

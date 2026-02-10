@@ -107,7 +107,7 @@ namespace Cortex.Streams.Abstractions
         /// Builds the stream
         /// </summary>
         /// <returns></returns>
-        IStream<TIn, TCurrent> Build();
+        IStream<TIn> Build();
 
 
         /// <summary>
