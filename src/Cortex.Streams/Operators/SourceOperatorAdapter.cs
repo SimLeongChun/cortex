@@ -6,10 +6,17 @@ using System.Diagnostics;
 
 namespace Cortex.Streams.Operators
 {
-    public class SourceOperatorAdapter<TOutput> : IOperator, IHasNextOperators, ITelemetryEnabled
+    /// <summary>
+    /// Adapter that wraps an ISourceOperator to work within the operator chain.
+    /// Handles telemetry, error handling, and lifecycle management for source operators.
+    /// </summary>
+    public class SourceOperatorAdapter<TOutput> : IOperator, IHasNextOperators, ITelemetryEnabled, IErrorHandlingEnabled
     {
         private readonly ISourceOperator<TOutput> _sourceOperator;
         private IOperator _nextOperator;
+
+        // Cached operator name to avoid string allocation on hot path
+        private static readonly string OperatorName = $"SourceOperatorAdapter<{typeof(TOutput).Name}>";
 
         // Telemetry fields
         private ITelemetryProvider _telemetryProvider;
@@ -19,9 +26,26 @@ namespace Cortex.Streams.Operators
         private Action _incrementEmittedCounter;
         private Action<double> _recordEmissionTime;
 
+        // Error handling fields
+        private StreamExecutionOptions _executionOptions = StreamExecutionOptions.Default;
+
         public SourceOperatorAdapter(ISourceOperator<TOutput> sourceOperator)
         {
             _sourceOperator = sourceOperator;
+        }
+
+        /// <summary>
+        /// Sets the error handling options for this operator and propagates to next operators.
+        /// </summary>
+        public void SetErrorHandling(StreamExecutionOptions options)
+        {
+            _executionOptions = options ?? StreamExecutionOptions.Default;
+
+            // Propagate to the next operator if it supports error handling
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
         }
 
         public void SetTelemetryProvider(ITelemetryProvider telemetryProvider)
@@ -67,6 +91,12 @@ namespace Cortex.Streams.Operators
                 nextTelemetryEnabled.SetTelemetryProvider(_telemetryProvider);
             }
 
+            // Propagate error handling to the next operator
+            if (_nextOperator is IErrorHandlingEnabled nextWithErrorHandling && _executionOptions != null)
+            {
+                nextWithErrorHandling.SetErrorHandling(_executionOptions);
+            }
+
             // Start the source operator
             Start();
         }
@@ -84,8 +114,15 @@ namespace Cortex.Streams.Operators
                         try
                         {
                             _incrementEmittedCounter?.Invoke();
-                            _nextOperator?.Process(output);
-                            span.SetAttribute("status", "success");
+
+                            // Use error handling helper to properly handle errors according to stream configuration
+                            var executed = ErrorHandlingHelper.TryExecute<TOutput>(
+                                _executionOptions,
+                                OperatorName,
+                                output,
+                                item => _nextOperator?.Process(item));
+
+                            span.SetAttribute("status", executed ? "success" : "skipped");
                         }
                         catch (StreamStoppedException ex)
                         {
@@ -99,6 +136,7 @@ namespace Cortex.Streams.Operators
                         {
                             span.SetAttribute("status", "error");
                             span.SetAttribute("exception", ex.ToString());
+                            // Re-throw to let the source operator handle it (e.g., logging, stopping)
                             throw;
                         }
                         finally
@@ -112,7 +150,12 @@ namespace Cortex.Streams.Operators
                 {
                     try
                     {
-                        _nextOperator?.Process(output);
+                        // Use error handling helper to properly handle errors according to stream configuration
+                        ErrorHandlingHelper.TryExecute<TOutput>(
+                            _executionOptions,
+                            OperatorName,
+                            output,
+                            item => _nextOperator?.Process(item));
                     }
                     catch (StreamStoppedException)
                     {
